@@ -5,7 +5,10 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { NavigationHeader } from "@/components/navigation-header";
 import { Toaster } from "@/components/ui/sonner";
 
-const jetbrainsMono = JetBrains_Mono({subsets:['latin'],variable:'--font-sans'});
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-sans",
+});
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,7 +22,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Rent Invoice Generator",
-  description: "Manage tenants and generate rent invoices with automatic electricity calculations",
+  description:
+    "Manage tenants and generate rent invoices with automatic electricity calculations",
 };
 
 export default function RootLayout({

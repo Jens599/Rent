@@ -15,6 +15,11 @@ export interface Invoice {
   previousMonthReading: number;
   currentMonthReading: number;
   unitsConsumed: number;
+  electricityRate?: number;
   electricityCost: number;
   total: number;
+}
+
+export interface Settings {
+  electricityRate: number;
 }

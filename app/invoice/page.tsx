@@ -1,149 +1,264 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { InvoiceDisplay } from "@/components/invoice-display"
-import type { Tenant, Invoice } from "@/lib/types"
-import { FileTextIcon } from "lucide-react"
-import { toast } from "sonner"
+import * as React from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldError,
+  FieldDescription,
+} from "@/components/ui/field";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { CalendarIcon, FileTextIcon } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { InvoiceDisplay } from "@/components/invoice-display";
+import type { Tenant, Invoice } from "@/lib/types";
+import { toast } from "sonner";
 
-const ELECTRICITY_RATE = 15 // Rs. 15 per unit
+const DEFAULT_ELECTRICITY_RATE = 15; // Default Rs. 15 per unit
 
 export default function InvoicePage() {
-  const [tenants, setTenants] = React.useState<Tenant[]>([])
-  const [selectedTenantId, setSelectedTenantId] = React.useState<string>("")
-  const [invoiceDate, setInvoiceDate] = React.useState<string>(
-    new Date().toISOString().split("T")[0]
-  )
-  const [baseRent, setBaseRent] = React.useState<string>("")
-  const [previousMonthReading, setPreviousMonthReading] = React.useState<string>("")
-  const [currentMonthReading, setCurrentMonthReading] = React.useState<string>("")
-  const [generatedInvoice, setGeneratedInvoice] = React.useState<Invoice | null>(null)
-  const [loading, setLoading] = React.useState(false)
+  const [tenants, setTenants] = React.useState<Tenant[]>([]);
+  const [selectedTenantId, setSelectedTenantId] = React.useState<string>("");
+  const [invoiceDateTime, setInvoiceDateTime] = React.useState<Date>(
+    new Date(),
+  );
+  const [baseRent, setBaseRent] = React.useState<string>("");
+  const [previousMonthReading, setPreviousMonthReading] =
+    React.useState<string>("");
+  const [currentMonthReading, setCurrentMonthReading] =
+    React.useState<string>("");
+  const [electricityRate, setElectricityRate] = React.useState<number>(15);
+  const [generatedInvoice, setGeneratedInvoice] =
+    React.useState<Invoice | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [errors, setErrors] = React.useState<Record<string, string>>({});
 
-  // Load tenants
+  // Load tenants and settings
   React.useEffect(() => {
-    loadTenants()
-  }, [])
+    loadTenants();
+    loadSettings();
+  }, []);
 
   // Load tenant data and previous invoice when tenant is selected
   React.useEffect(() => {
     if (selectedTenantId) {
-      const tenant = tenants.find((t) => t.id === selectedTenantId)
+      const tenant = tenants.find((t) => t.id === selectedTenantId);
       if (tenant) {
         // Auto-populate base rent
-        setBaseRent(tenant.baseRent.toString())
-        
+        setBaseRent(tenant.baseRent.toString());
+
         // Load last invoice to get previous month reading
-        loadLastInvoice(selectedTenantId)
+        loadLastInvoice(selectedTenantId);
       }
     } else {
       // Reset form when no tenant selected
-      setBaseRent("")
-      setPreviousMonthReading("")
+      setBaseRent("");
+      setPreviousMonthReading("");
+      setCurrentMonthReading("");
     }
-  }, [selectedTenantId, tenants])
+  }, [selectedTenantId, tenants]);
+
+  // Refresh previous reading when page loads (to get latest data)
+  React.useEffect(() => {
+    if (selectedTenantId && tenants.length > 0) {
+      loadLastInvoice(selectedTenantId);
+    }
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const response = await fetch("/api/settings");
+      if (response.ok) {
+        const data = await response.json();
+        setElectricityRate(data.electricityRate);
+      }
+    } catch (error) {
+      console.error("Error loading settings:", error);
+    }
+  };
 
   const loadTenants = async () => {
     try {
-      const response = await fetch("/api/tenants")
-      const data = await response.json()
-      setTenants(data)
+      const response = await fetch("/api/tenants");
+      const data = await response.json();
+      setTenants(data);
     } catch (error) {
-      console.error("Error loading tenants:", error)
+      console.error("Error loading tenants:", error);
     }
-  }
+  };
 
   const loadLastInvoice = async (tenantId: string) => {
     try {
-      const response = await fetch(`/api/invoices/last?tenantId=${tenantId}`)
+      const response = await fetch(`/api/invoices/last?tenantId=${tenantId}`);
       if (response.ok) {
-        const lastInvoice = await response.json()
+        const lastInvoice = await response.json();
         if (lastInvoice) {
           // Auto-populate previous month reading from last invoice's current reading
-          setPreviousMonthReading(lastInvoice.currentMonthReading.toString())
+          setPreviousMonthReading(lastInvoice.currentMonthReading.toString());
         } else {
           // No previous invoice, clear the field
-          setPreviousMonthReading("")
+          setPreviousMonthReading("");
         }
       }
     } catch (error) {
-      console.error("Error loading last invoice:", error)
+      console.error("Error loading last invoice:", error);
     }
-  }
+  };
 
   // Calculate values
   const unitsConsumed = React.useMemo(() => {
-    const prev = parseFloat(previousMonthReading) || 0
-    const curr = parseFloat(currentMonthReading) || 0
-    return Math.max(0, curr - prev)
-  }, [previousMonthReading, currentMonthReading])
+    const prev = parseFloat(previousMonthReading) || 0;
+    const curr = parseFloat(currentMonthReading) || 0;
+    return Math.max(0, curr - prev);
+  }, [previousMonthReading, currentMonthReading]);
 
   const electricityCost = React.useMemo(() => {
-    return unitsConsumed * ELECTRICITY_RATE
-  }, [unitsConsumed])
+    return unitsConsumed * electricityRate;
+  }, [unitsConsumed, electricityRate]);
 
   const total = React.useMemo(() => {
-    const rent = parseFloat(baseRent) || 0
-    return rent + electricityCost
-  }, [baseRent, electricityCost])
+    const rent = parseFloat(baseRent) || 0;
+    return rent + electricityCost;
+  }, [baseRent, electricityCost]);
 
-  const handleGenerateInvoice = async () => {
-    if (!selectedTenantId || !invoiceDate || !baseRent || !currentMonthReading) {
-      toast.error("Please fill in all required fields")
-      return
+  const validateForm = (): boolean => {
+    const newErrors: Record<string, string> = {};
+
+    // Tenant validation
+    if (!selectedTenantId) {
+      newErrors.tenant = "Please select a tenant";
     }
 
-    const tenant = tenants.find((t) => t.id === selectedTenantId)
-    if (!tenant) return
+    // Date validation
+    if (!invoiceDateTime) {
+      newErrors.date = "Please select an invoice date";
+    } else {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const selectedDate = new Date(invoiceDateTime);
+      selectedDate.setHours(0, 0, 0, 0);
+      if (selectedDate > today) {
+        newErrors.date = "Invoice date cannot be in the future";
+      }
+    }
 
-    setLoading(true)
+    // Base rent validation
+    if (!baseRent) {
+      newErrors.baseRent = "Please enter base rent";
+    } else {
+      const rent = parseFloat(baseRent);
+      if (isNaN(rent) || rent <= 0) {
+        newErrors.baseRent = "Base rent must be a positive number";
+      } else if (rent > 1000000) {
+        newErrors.baseRent = "Base rent seems unusually high";
+      }
+    }
+
+    // Current reading validation
+    if (!currentMonthReading) {
+      newErrors.currentReading = "Please enter current month reading";
+    } else {
+      const current = parseFloat(currentMonthReading);
+      if (isNaN(current) || current < 0) {
+        newErrors.currentReading =
+          "Current reading must be a non-negative number";
+      }
+    }
+
+    // Previous reading validation (optional but if provided, must be valid)
+    if (previousMonthReading) {
+      const previous = parseFloat(previousMonthReading);
+      const current = parseFloat(currentMonthReading);
+      if (isNaN(previous) || previous < 0) {
+        newErrors.previousReading =
+          "Previous reading must be a non-negative number";
+      } else if (current && previous > current) {
+        newErrors.previousReading =
+          "Previous reading cannot be greater than current reading";
+      }
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleGenerateInvoice = async () => {
+    if (!validateForm()) {
+      toast.error("Please fix the validation errors");
+      return;
+    }
+
+    const tenant = tenants.find((t) => t.id === selectedTenantId);
+    if (!tenant) return;
+
+    setLoading(true);
 
     try {
       const invoiceData: Omit<Invoice, "id"> = {
         tenantId: selectedTenantId,
         tenantName: tenant.name,
-        date: invoiceDate,
+        date: invoiceDateTime.toISOString(),
         baseRent: parseFloat(baseRent),
         previousMonthReading: parseFloat(previousMonthReading) || 0,
         currentMonthReading: parseFloat(currentMonthReading),
         unitsConsumed,
+        electricityRate,
         electricityCost,
         total,
-      }
+      };
 
       const response = await fetch("/api/invoices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(invoiceData),
-      })
+      });
 
       if (response.ok) {
-        const newInvoice = await response.json()
-        setGeneratedInvoice(newInvoice)
-        toast.success("Invoice generated successfully")
+        const newInvoice = await response.json();
+        setGeneratedInvoice(newInvoice);
+        toast.success("Invoice generated successfully");
       } else {
-        toast.error("Failed to generate invoice")
+        toast.error("Failed to generate invoice");
       }
     } catch (error) {
-      console.error("Error generating invoice:", error)
-      toast.error("Failed to generate invoice")
+      console.error("Error generating invoice:", error);
+      toast.error("Failed to generate invoice");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleReset = () => {
-    setGeneratedInvoice(null)
-    setCurrentMonthReading("")
+    setGeneratedInvoice(null);
+    setCurrentMonthReading("");
     // Keep tenant, date, base rent, and previous reading
-  }
+  };
 
-  const selectedTenant = tenants.find((t) => t.id === selectedTenantId)
+  const selectedTenant = tenants.find((t) => t.id === selectedTenantId);
 
   return (
     <div className="container mx-auto p-6 max-w-4xl">
@@ -153,7 +268,8 @@ export default function InvoicePage() {
           Generate Rent Invoice
         </h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Create invoices for your tenants with automatic electricity calculations
+          Create invoices for your tenants with automatic electricity
+          calculations
         </p>
       </div>
 
@@ -168,8 +284,8 @@ export default function InvoicePage() {
           <CardContent>
             <form
               onSubmit={(e) => {
-                e.preventDefault()
-                handleGenerateInvoice()
+                e.preventDefault();
+                handleGenerateInvoice();
               }}
             >
               <FieldGroup>
@@ -177,10 +293,15 @@ export default function InvoicePage() {
                   <FieldLabel htmlFor="tenant">Tenant *</FieldLabel>
                   <Select
                     value={selectedTenantId}
-                    onValueChange={setSelectedTenantId}
+                    onValueChange={(value) => {
+                      setSelectedTenantId(value);
+                      if (errors.tenant) {
+                        setErrors((prev) => ({ ...prev, tenant: "" }));
+                      }
+                    }}
                     required
                   >
-                    <SelectTrigger id="tenant" className="w-full">
+                    <SelectTrigger id="tenant" aria-invalid={!!errors.tenant}>
                       <SelectValue placeholder="Select a tenant" />
                     </SelectTrigger>
                     <SelectContent>
@@ -191,23 +312,29 @@ export default function InvoicePage() {
                       ) : (
                         tenants.map((tenant) => (
                           <SelectItem key={tenant.id} value={tenant.id}>
-                            {tenant.name} (Rs. {tenant.baseRent.toLocaleString()})
+                            {tenant.name} (Rs.{" "}
+                            {tenant.baseRent.toLocaleString()})
                           </SelectItem>
                         ))
                       )}
                     </SelectContent>
                   </Select>
+                  {errors.tenant && <FieldError>{errors.tenant}</FieldError>}
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="date">Invoice Date *</FieldLabel>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={invoiceDate}
-                    onChange={(e) => setInvoiceDate(e.target.value)}
-                    required
-                  />
+                  <FieldLabel>Invoice Date & Time</FieldLabel>
+                  <div className="p-3 border rounded-md bg-muted/50">
+                    <div className="flex items-center gap-2">
+                      <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">
+                        {format(invoiceDateTime, "PPP 'at' p")}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Current date and time will be saved
+                    </p>
+                  </div>
                 </Field>
 
                 <Field>
@@ -217,14 +344,24 @@ export default function InvoicePage() {
                     type="number"
                     step="0.01"
                     value={baseRent}
-                    onChange={(e) => setBaseRent(e.target.value)}
+                    onChange={(e) => {
+                      setBaseRent(e.target.value);
+                      if (errors.baseRent) {
+                        setErrors((prev) => ({ ...prev, baseRent: "" }));
+                      }
+                    }}
+                    aria-invalid={!!errors.baseRent}
                     required
                     placeholder="Enter base rent"
+                    className="transition-all duration-200 hover:border-primary focus:scale-[1.02]"
                   />
-                  {selectedTenant && (
-                    <p className="text-xs text-muted-foreground mt-1">
+                  {errors.baseRent && (
+                    <FieldError>{errors.baseRent}</FieldError>
+                  )}
+                  {selectedTenant && !errors.baseRent && (
+                    <FieldDescription>
                       Default: Rs. {selectedTenant.baseRent.toLocaleString()}
-                    </p>
+                    </FieldDescription>
                   )}
                 </Field>
 
@@ -238,14 +375,29 @@ export default function InvoicePage() {
                       type="number"
                       step="0.01"
                       value={previousMonthReading}
-                      onChange={(e) => setPreviousMonthReading(e.target.value)}
+                      onChange={(e) => {
+                        setPreviousMonthReading(e.target.value);
+                        if (errors.previousReading) {
+                          setErrors((prev) => ({
+                            ...prev,
+                            previousReading: "",
+                          }));
+                        }
+                      }}
+                      aria-invalid={!!errors.previousReading}
                       placeholder="Auto-filled from last invoice"
+                      className="transition-all duration-200 hover:border-primary focus:scale-[1.02]"
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {previousMonthReading
-                        ? "Auto-filled from last invoice"
-                        : "Enter manually if no previous invoice"}
-                    </p>
+                    {errors.previousReading && (
+                      <FieldError>{errors.previousReading}</FieldError>
+                    )}
+                    {!errors.previousReading && (
+                      <FieldDescription>
+                        {previousMonthReading
+                          ? "Auto-filled from last invoice"
+                          : "Enter manually if no previous invoice"}
+                      </FieldDescription>
+                    )}
                   </Field>
 
                   <Field>
@@ -257,12 +409,46 @@ export default function InvoicePage() {
                       type="number"
                       step="0.01"
                       value={currentMonthReading}
-                      onChange={(e) => setCurrentMonthReading(e.target.value)}
+                      onChange={(e) => {
+                        setCurrentMonthReading(e.target.value);
+                        if (errors.currentReading) {
+                          setErrors((prev) => ({
+                            ...prev,
+                            currentReading: "",
+                          }));
+                        }
+                      }}
+                      aria-invalid={!!errors.currentReading}
                       required
                       placeholder="Enter current reading"
+                      className="transition-all duration-200 hover:border-primary focus:scale-[1.02]"
                     />
+                    {errors.currentReading && (
+                      <FieldError>{errors.currentReading}</FieldError>
+                    )}
                   </Field>
                 </div>
+
+                {/* Current Rate Display */}
+                <Card className="bg-muted/50">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium">
+                          Current Electricity Rate
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          From settings. Change in Settings page if needed.
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-primary">
+                          Rs. {electricityRate.toFixed(2)}/unit
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
                 {/* Calculation Preview */}
                 {currentMonthReading && (
@@ -273,11 +459,14 @@ export default function InvoicePage() {
                           <span className="text-muted-foreground">
                             Units Consumed:
                           </span>
-                          <span className="font-medium">{unitsConsumed.toFixed(2)}</span>
+                          <span className="font-medium">
+                            {unitsConsumed.toFixed(2)}
+                          </span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">
-                            Electricity Cost (Rs. {ELECTRICITY_RATE}/unit):
+                            Electricity Cost (Rs. {electricityRate.toFixed(2)}
+                            /unit):
                           </span>
                           <span className="font-medium">
                             Rs. {electricityCost.toFixed(2)}
@@ -295,18 +484,21 @@ export default function InvoicePage() {
                 )}
 
                 <Field orientation="horizontal">
-                  <Button type="submit" disabled={loading || tenants.length === 0}>
+                  <Button
+                    type="submit"
+                    disabled={loading || tenants.length === 0}
+                  >
                     {loading ? "Generating..." : "Generate Invoice"}
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => {
-                      setSelectedTenantId("")
-                      setInvoiceDate(new Date().toISOString().split("T")[0])
-                      setBaseRent("")
-                      setPreviousMonthReading("")
-                      setCurrentMonthReading("")
+                      setSelectedTenantId("");
+                      setInvoiceDateTime(new Date());
+                      setBaseRent("");
+                      setPreviousMonthReading("");
+                      setCurrentMonthReading("");
                     }}
                   >
                     Reset Form
@@ -319,13 +511,8 @@ export default function InvoicePage() {
       ) : (
         <div className="space-y-4">
           <InvoiceDisplay invoice={generatedInvoice} />
-          <div className="flex gap-2">
-            <Button onClick={handleReset} variant="outline">
-              Generate Another Invoice
-            </Button>
-          </div>
         </div>
       )}
     </div>
-  )
+  );
 }

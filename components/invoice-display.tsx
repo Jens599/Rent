@@ -1,77 +1,17 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
-import type { Invoice } from "@/lib/types"
-import { PrinterIcon, CopyIcon } from "lucide-react"
-import { toast } from "sonner"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import type { Invoice } from "@/lib/types";
 
 interface InvoiceDisplayProps {
-  invoice: Invoice
+  invoice: Invoice;
 }
 
 export function InvoiceDisplay({ invoice }: InvoiceDisplayProps) {
-  const invoiceRef = React.useRef<HTMLDivElement>(null)
-
-  const handlePrint = () => {
-    window.print()
-  }
-
-  const handleCopyScreenshot = async () => {
-    if (!invoiceRef.current) return
-
-    try {
-      const html2canvas = (await import("html2canvas")).default
-      
-      const canvas = await html2canvas(invoiceRef.current, {
-        backgroundColor: "#ffffff",
-        scale: 2,
-        logging: false,
-      })
-
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            navigator.clipboard
-              .write([
-                new ClipboardItem({
-                  "image/png": blob,
-                }),
-              ])
-              .then(() => {
-                toast.success("Invoice screenshot copied to clipboard!")
-              })
-              .catch((err) => {
-                console.error("Clipboard error:", err)
-                toast.error("Failed to copy to clipboard. Please try printing instead.")
-              })
-          }
-        },
-        "image/png",
-        1.0
-      )
-    } catch (error) {
-      console.error("Error copying screenshot:", error)
-      toast.error("Failed to copy screenshot. Please try printing instead.")
-    }
-  }
-
   return (
     <div className="space-y-4">
-      <div className="flex gap-2 justify-end print:hidden">
-        <Button onClick={handlePrint} variant="outline" size="sm">
-          <PrinterIcon />
-          Print
-        </Button>
-        <Button onClick={handleCopyScreenshot} variant="outline" size="sm">
-          <CopyIcon />
-          Copy Screenshot
-        </Button>
-      </div>
-
-      <div ref={invoiceRef} className="bg-white p-8 print:p-4">
+      <div className="bg-background p-8 print:p-4">
         <Card className="border-2">
           <CardHeader className="text-center pb-4">
             <CardTitle className="text-2xl font-bold">RENT INVOICE</CardTitle>
@@ -79,13 +19,19 @@ export function InvoiceDisplay({ invoice }: InvoiceDisplayProps) {
           <CardContent className="space-y-6">
             {/* Invoice Header */}
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Tenant Name</p>
-                <p className="font-semibold text-lg">{invoice.tenantName}</p>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground leading-none">
+                  Tenant Name
+                </p>
+                <p className="font-semibold text-lg leading-normal">
+                  {invoice.tenantName}
+                </p>
               </div>
-              <div className="text-right">
-                <p className="text-sm text-muted-foreground">Invoice Date</p>
-                <p className="font-semibold">
+              <div className="text-right space-y-2">
+                <p className="text-sm text-muted-foreground leading-none">
+                  Invoice Date
+                </p>
+                <p className="font-semibold leading-normal">
                   {new Date(invoice.date).toLocaleDateString("en-IN", {
                     year: "numeric",
                     month: "long",
@@ -100,33 +46,45 @@ export function InvoiceDisplay({ invoice }: InvoiceDisplayProps) {
             {/* Charges Section */}
             <div>
               <h3 className="font-semibold mb-4 text-lg">Charges</h3>
-              <div className="space-y-3">
+              <div className="space-y-6">
                 {/* Base Rent */}
-                <div className="flex justify-between items-center">
-                  <div>
+                <div className="flex justify-between items-start">
+                  <div className="pr-4">
                     <p className="font-medium">Base Rent</p>
                     <p className="text-sm text-muted-foreground">
                       (includes utilities)
                     </p>
                   </div>
-                  <p className="font-semibold">
-                    Rs. {invoice.baseRent.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <p className="font-semibold shrink-0">
+                    Rs.{" "}
+                    {invoice.baseRent.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </p>
                 </div>
 
                 {/* Electricity */}
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="font-medium">Electricity</p>
-                    <p className="text-sm text-muted-foreground">
-                      Previous: {invoice.previousMonthReading.toFixed(2)} units → Current:{" "}
-                      {invoice.currentMonthReading.toFixed(2)} units
-                      <br />
-                      Units Consumed: {invoice.unitsConsumed.toFixed(2)} × Rs. 15/unit
+                <div className="flex justify-between items-start">
+                  <div className="pr-4">
+                    <p className="font-medium leading-tight">Electricity</p>
+                    <p className="text-sm text-muted-foreground leading-normal">
+                      Previous: {invoice.previousMonthReading.toFixed(2)} units
+                    </p>
+                    <p className="text-sm text-muted-foreground leading-normal">
+                      Current: {invoice.currentMonthReading.toFixed(2)} units
+                    </p>
+                    <p className="text-sm text-muted-foreground leading-normal">
+                      Units Consumed: {invoice.unitsConsumed.toFixed(2)} × Rs.
+                      {(invoice.electricityRate || 15).toFixed(2)}/unit
                     </p>
                   </div>
-                  <p className="font-semibold">
-                    Rs. {invoice.electricityCost.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <p className="font-semibold shrink-0">
+                    Rs.{" "}
+                    {invoice.electricityCost.toLocaleString("en-IN", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </p>
                 </div>
               </div>
@@ -135,15 +93,19 @@ export function InvoiceDisplay({ invoice }: InvoiceDisplayProps) {
             <Separator />
 
             {/* Total */}
-            <div className="flex justify-between items-center pt-2">
+            <div className="flex justify-between items-center pt-4">
               <p className="font-bold text-xl">Total Amount</p>
               <p className="font-bold text-2xl">
-                Rs. {invoice.total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                Rs.{" "}
+                {invoice.total.toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
               </p>
             </div>
           </CardContent>
         </Card>
       </div>
     </div>
-  )
+  );
 }
