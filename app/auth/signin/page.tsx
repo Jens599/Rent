@@ -49,6 +49,7 @@ function SignInContent() {
       if (result?.error) {
         setError("Invalid credentials");
       } else {
+        console.log("Sign-in successful, redirecting to /tenants");
         await getSession();
         router.push("/tenants");
         router.refresh();
