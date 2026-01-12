@@ -104,3 +104,28 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
+
+// Utility function to get last invoice for a tenant
+export async function getLastInvoiceForTenant(tenantId: string) {
+  try {
+    const invoices = await convex.query(api.tasks.getInvoicesByTenant, {
+      userId: null as any, // This might need to be adjusted based on your auth requirements
+      tenantId: tenantId as any,
+    });
+
+    // Sort by date (newest first) and return the first one
+    if (invoices && invoices.length > 0) {
+      invoices.sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      );
+      return invoices[0];
+    }
+
+    return null;
+  } catch (error) {
+    logger.error("get_last_invoice_for_tenant_failed", error as Error, {
+      tenantId,
+    });
+    throw error;
+  }
+}
