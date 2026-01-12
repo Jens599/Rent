@@ -6,12 +6,13 @@ export async function proxy(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
 
-  // Allow access to auth pages and static assets
+  // Allow access to auth pages, static assets, and home page
   if (
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
-    pathname.startsWith("/auth")
+    pathname.startsWith("/auth") ||
+    pathname === "/"
   ) {
     return NextResponse.next();
   }
