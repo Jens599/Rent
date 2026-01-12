@@ -18,33 +18,23 @@ import {
   FieldError,
   FieldDescription,
 } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { CalendarIcon, FileTextIcon } from "lucide-react";
+import { CalendarIcon, FileTextIcon, HomeIcon, UserIcon } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { InvoiceDisplay } from "@/components/invoice-display";
 import type { Tenant, Invoice } from "@/lib/types";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 
 const DEFAULT_ELECTRICITY_RATE = 15; // Default Rs. 15 per unit
 
 export default function InvoicePage() {
   const { data: session } = useSession();
   const [tenants, setTenants] = React.useState<Tenant[]>([]);
-  const [selectedTenantId, setSelectedTenantId] = React.useState<string>("");
+  const [selectedTenant, setSelectedTenant] = React.useState<Tenant | null>(
+    null,
+  );
   const [invoiceDateTime, setInvoiceDateTime] = React.useState<Date>(
     new Date(),
   );
@@ -67,27 +57,24 @@ export default function InvoicePage() {
 
   // Load tenant data and previous invoice when tenant is selected
   React.useEffect(() => {
-    if (selectedTenantId) {
-      const tenant = tenants.find((t) => t._id === selectedTenantId);
-      if (tenant) {
-        // Auto-populate base rent
-        setBaseRent(tenant.baseRent.toString());
+    if (selectedTenant) {
+      // Auto-populate base rent
+      setBaseRent(selectedTenant.baseRent.toString());
 
-        // Load last invoice to get previous month reading
-        loadLastInvoice(selectedTenantId);
-      }
+      // Load last invoice to get previous month reading
+      loadLastInvoice(selectedTenant._id);
     } else {
       // Reset form when no tenant selected
       setBaseRent("");
       setPreviousMonthReading("");
       setCurrentMonthReading("");
     }
-  }, [selectedTenantId, tenants]);
+  }, [selectedTenant]);
 
   // Refresh previous reading when page loads (to get latest data)
   React.useEffect(() => {
-    if (selectedTenantId && tenants.length > 0) {
-      loadLastInvoice(selectedTenantId);
+    if (selectedTenant && tenants.length > 0) {
+      loadLastInvoice(selectedTenant._id);
     }
   }, []);
 
@@ -170,7 +157,7 @@ export default function InvoicePage() {
     const newErrors: Record<string, string> = {};
 
     // Tenant validation
-    if (!selectedTenantId) {
+    if (!selectedTenant) {
       newErrors.tenant = "Please select a tenant";
     }
 
@@ -223,8 +210,7 @@ export default function InvoicePage() {
       return;
     }
 
-    const tenant = tenants.find((t) => t._id === selectedTenantId);
-    if (!tenant) return;
+    if (!selectedTenant) return;
 
     if (!session?.user?.id) {
       toast.error("User not authenticated");
@@ -236,8 +222,8 @@ export default function InvoicePage() {
     try {
       const invoiceData = {
         userId: session.user.id,
-        tenantId: selectedTenantId,
-        tenantName: tenant.name,
+        tenantId: selectedTenant._id,
+        tenantName: selectedTenant.name,
         date: invoiceDateTime.toISOString(),
         baseRent: parseFloat(baseRent),
         previousMonthReading: parseFloat(previousMonthReading) || 0,
@@ -275,28 +261,123 @@ export default function InvoicePage() {
     // Keep tenant, date, base rent, and previous reading
   };
 
-  const selectedTenant = tenants.find((t) => t._id === selectedTenantId);
+  const handleBackToTenants = () => {
+    setSelectedTenant(null);
+    setGeneratedInvoice(null);
+    setCurrentMonthReading("");
+    setBaseRent("");
+    setPreviousMonthReading("");
+  };
+
+  const handleTenantSelect = (tenant: Tenant) => {
+    setSelectedTenant(tenant);
+  };
 
   return (
     <div className="container mx-auto p-6 max-w-4xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <FileTextIcon />
-          Generate Rent Invoice
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Create invoices for your tenants with automatic electricity
-          calculations
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <FileTextIcon />
+            Generate Rent Invoice
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Create invoices for your tenants with automatic electricity
+            calculations
+          </p>
+        </div>
+        <Link href="/">
+          <Button variant="outline" className="flex items-center gap-2">
+            <HomeIcon className="h-4 w-4" />
+            Back to Home
+          </Button>
+        </Link>
       </div>
 
-      {!generatedInvoice ? (
+      {!selectedTenant ? (
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Select Tenant</CardTitle>
+              <CardDescription>
+                Choose a tenant to generate an invoice for
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {tenants.length === 0 ? (
+                <div className="text-center py-8">
+                  <UserIcon className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground">No tenants available</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Add tenants first to generate invoices
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {tenants.map((tenant) => (
+                    <Card key={tenant._id} className="transition-all border-2">
+                      <CardContent className="p-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <UserIcon className="h-5 w-5 text-muted-foreground" />
+                            <h3 className="font-semibold">{tenant.name}</h3>
+                          </div>
+                          <div className="space-y-1">
+                            <p className="text-sm text-muted-foreground">
+                              Base Rent:{" "}
+                              <span className="font-medium">
+                                Rs. {tenant.baseRent.toLocaleString()}
+                              </span>
+                            </p>
+                            {tenant.contact && (
+                              <p className="text-sm text-muted-foreground">
+                                Contact:{" "}
+                                <span className="font-medium">
+                                  {tenant.contact}
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            className="w-full mt-2 [a]:hover:bg-primary/80 hover:scale-105"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleTenantSelect(tenant);
+                            }}
+                          >
+                            Generate Invoice
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      ) : !generatedInvoice ? (
         <Card>
           <CardHeader>
-            <CardTitle>Invoice Details</CardTitle>
-            <CardDescription>
-              Fill in the details to generate an invoice
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Invoice Details</CardTitle>
+                <CardDescription>
+                  Fill in the details to generate an invoice for{" "}
+                  {selectedTenant.name}
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                onClick={handleBackToTenants}
+                className="flex items-center gap-2"
+              >
+                <UserIcon className="h-4 w-4" />
+                Back to Tenants
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <form
@@ -307,36 +388,16 @@ export default function InvoicePage() {
             >
               <FieldGroup>
                 <Field>
-                  <FieldLabel htmlFor="tenant">Tenant *</FieldLabel>
-                  <Select
-                    value={selectedTenantId}
-                    onValueChange={(value) => {
-                      setSelectedTenantId(value);
-                      if (errors.tenant) {
-                        setErrors((prev) => ({ ...prev, tenant: "" }));
-                      }
-                    }}
-                    required
-                  >
-                    <SelectTrigger id="tenant" aria-invalid={!!errors.tenant}>
-                      <SelectValue placeholder="Select a tenant" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tenants.length === 0 ? (
-                        <SelectItem value="none" disabled>
-                          No tenants available. Add tenants first.
-                        </SelectItem>
-                      ) : (
-                        tenants.map((tenant) => (
-                          <SelectItem key={tenant._id} value={tenant._id}>
-                            {tenant.name} (Rs.{" "}
-                            {tenant.baseRent.toLocaleString()})
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {errors.tenant && <FieldError>{errors.tenant}</FieldError>}
+                  <FieldLabel>Selected Tenant</FieldLabel>
+                  <div className="p-3 border rounded-md bg-muted/50">
+                    <div className="flex items-center gap-2">
+                      <UserIcon className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium">{selectedTenant.name}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Base Rent: Rs. {selectedTenant.baseRent.toLocaleString()}
+                    </p>
+                  </div>
                 </Field>
 
                 <Field>
@@ -359,10 +420,7 @@ export default function InvoicePage() {
                   <div className="p-3 border rounded-md bg-muted/50">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">
-                        Rs.{" "}
-                        {selectedTenant
-                          ? selectedTenant.baseRent.toLocaleString()
-                          : "0"}
+                        Rs. {selectedTenant.baseRent.toLocaleString()}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -490,19 +548,15 @@ export default function InvoicePage() {
                 )}
 
                 <Field orientation="horizontal">
-                  <Button
-                    type="submit"
-                    disabled={loading || tenants.length === 0}
-                  >
+                  <Button type="submit" disabled={loading}>
                     {loading ? "Generating..." : "Generate Invoice"}
                   </Button>
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => {
-                      setSelectedTenantId("");
                       setInvoiceDateTime(new Date());
-                      setBaseRent("");
+                      setBaseRent(selectedTenant.baseRent.toString());
                       setPreviousMonthReading("");
                       setCurrentMonthReading("");
                     }}
