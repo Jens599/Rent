@@ -50,7 +50,7 @@ function SignInContent() {
         setError("Invalid credentials");
       } else {
         await getSession();
-        router.push("/");
+        router.push("/tenants");
         router.refresh();
       }
     } catch (error) {
