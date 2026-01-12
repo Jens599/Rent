@@ -49,9 +49,9 @@ function SignInContent() {
       if (result?.error) {
         setError("Invalid credentials");
       } else {
-        console.log("Sign-in successful, redirecting to /tenants");
+        console.log("Sign-in successful, redirecting to /");
         await getSession();
-        router.push("/tenants");
+        router.push("/");
         router.refresh();
       }
     } catch (error) {
