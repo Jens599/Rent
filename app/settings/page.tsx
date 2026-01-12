@@ -17,16 +17,39 @@ import {
   FieldError,
   FieldDescription,
 } from "@/components/ui/field";
-import { SettingsIcon, ZapIcon, SaveIcon } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { logger } from "@/lib/logger";
+import {
+  SettingsIcon,
+  ZapIcon,
+  SaveIcon,
+  TrashIcon,
+  UsersIcon,
+  FileTextIcon,
+  UserIcon,
+} from "lucide-react";
 import type { Settings } from "@/lib/types";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 
 export default function SettingsPage() {
+  const { data: session } = useSession();
   const [settings, setSettings] = React.useState<Settings>({
     electricityRate: 15,
   });
   const [loading, setLoading] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
+  const [deleteLoading, setDeleteLoading] = React.useState<string | null>(null);
 
   // Load settings on mount
   React.useEffect(() => {
@@ -34,8 +57,13 @@ export default function SettingsPage() {
   }, []);
 
   const loadSettings = async () => {
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
     try {
-      const response = await fetch("/api/settings");
+      const response = await fetch(`/api/settings?userId=${session.user.id}`);
       if (response.ok) {
         const data = await response.json();
         setSettings(data);
@@ -43,7 +71,7 @@ export default function SettingsPage() {
         toast.error("Failed to load settings");
       }
     } catch (error) {
-      console.error("Error loading settings:", error);
+      logger.error("settings_load_failed", error as Error);
       toast.error("Failed to load settings");
     }
   };
@@ -70,7 +98,12 @@ export default function SettingsPage() {
 
   const handleSaveSettings = async () => {
     if (!validateForm()) {
-      toast.error("Please fix the validation errors");
+      toast.error("Please fix validation errors");
+      return;
+    }
+
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
       return;
     }
 
@@ -80,7 +113,10 @@ export default function SettingsPage() {
       const response = await fetch("/api/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify({
+          userId: session.user.id,
+          electricityRate: settings.electricityRate,
+        }),
       });
 
       if (response.ok) {
@@ -90,7 +126,7 @@ export default function SettingsPage() {
         toast.error(errorData.error || "Failed to save settings");
       }
     } catch (error) {
-      console.error("Error saving settings:", error);
+      logger.error("settings_save_failed", error as Error);
       toast.error("Failed to save settings");
     } finally {
       setLoading(false);
@@ -100,6 +136,91 @@ export default function SettingsPage() {
   const handleReset = () => {
     setSettings({ electricityRate: 15 });
     setErrors({});
+  };
+
+  const handleDeleteAllInvoices = async () => {
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
+    setDeleteLoading("invoices");
+    try {
+      const response = await fetch("/api/settings/delete-invoices", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: session.user.id }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(`Successfully deleted ${data.count} invoices`);
+      } else {
+        toast.error("Failed to delete invoices");
+      }
+    } catch (error) {
+      logger.error("settings_delete_invoices_failed", error as Error);
+      toast.error("Failed to delete invoices");
+    } finally {
+      setDeleteLoading(null);
+    }
+  };
+
+  const handleDeleteAllTenants = async () => {
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
+    setDeleteLoading("tenants");
+    try {
+      const response = await fetch("/api/settings/delete-tenants", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: session.user.id }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        toast.success(`Successfully deleted ${data.count} tenants`);
+      } else {
+        toast.error("Failed to delete tenants");
+      }
+    } catch (error) {
+      logger.error("settings_delete_tenants_failed", error as Error);
+      toast.error("Failed to delete tenants");
+    } finally {
+      setDeleteLoading(null);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
+    setDeleteLoading("account");
+    try {
+      const response = await fetch("/api/settings/delete-account", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: session.user.id }),
+      });
+
+      if (response.ok) {
+        toast.success("Account deleted successfully");
+        // Redirect to sign in page after account deletion
+        window.location.href = "/auth/signin";
+      } else {
+        toast.error("Failed to delete account");
+      }
+    } catch (error) {
+      logger.error("settings_delete_account_failed", error as Error);
+      toast.error("Failed to delete account");
+    } finally {
+      setDeleteLoading(null);
+    }
   };
 
   return (
@@ -218,6 +339,176 @@ export default function SettingsPage() {
                   You can update this rate anytime to reflect changes in utility
                   company pricing.
                 </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Data Management Card */}
+      <Card className="mt-6 border-destructive/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <TrashIcon />
+            Data Management
+          </CardTitle>
+          <CardDescription>
+            Dangerous operations that cannot be undone. Please be careful.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-start gap-2">
+              <div className="w-2 h-2 bg-destructive rounded-full mt-1.5"></div>
+              <div>
+                <p className="font-medium">Delete All Invoices</p>
+                <p className="text-muted-foreground text-sm">
+                  Remove all invoice history for your account. This action
+                  cannot be undone.
+                </p>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deleteLoading === "invoices"}
+                      className="mt-2"
+                    >
+                      {deleteLoading === "invoices" ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <FileTextIcon className="h-4 w-4 mr-2" />
+                          Delete All Invoices
+                        </>
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete All Invoices?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete all your invoices. This
+                        action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteAllInvoices}
+                        className="bg-destructive text-destructive-foreground"
+                      >
+                        Delete All Invoices
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <div className="w-2 h-2 bg-destructive rounded-full mt-1.5"></div>
+              <div>
+                <p className="font-medium">Delete All Tenants</p>
+                <p className="text-muted-foreground text-sm">
+                  Remove all tenant information for your account. This action
+                  cannot be undone.
+                </p>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deleteLoading === "tenants"}
+                      className="mt-2"
+                    >
+                      {deleteLoading === "tenants" ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <UsersIcon className="h-4 w-4 mr-2" />
+                          Delete All Tenants
+                        </>
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete All Tenants?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete all your tenants. This
+                        action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteAllTenants}
+                        className="bg-destructive text-destructive-foreground"
+                      >
+                        Delete All Tenants
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <div className="w-2 h-2 bg-destructive rounded-full mt-1.5"></div>
+              <div>
+                <p className="font-medium">Delete Account</p>
+                <p className="text-muted-foreground text-sm">
+                  Permanently delete your account and all associated data. This
+                  action cannot be undone.
+                </p>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={deleteLoading === "account"}
+                      className="mt-2"
+                    >
+                      {deleteLoading === "account" ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <UserIcon className="h-4 w-4 mr-2" />
+                          Delete Account
+                        </>
+                      )}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete Account?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This will permanently delete your account, all invoices,
+                        all tenants, and all settings. This action cannot be
+                        undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeleteAccount}
+                        className="bg-destructive text-destructive-foreground"
+                      >
+                        Delete Account
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
           </div>

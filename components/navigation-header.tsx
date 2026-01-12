@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
+import { useSession, signOut } from "next-auth/react";
 import {
   SunIcon,
   MoonIcon,
@@ -12,6 +13,8 @@ import {
   FileTextIcon,
   HistoryIcon,
   SettingsIcon,
+  LogOutIcon,
+  UserIcon,
 } from "lucide-react";
 import * as React from "react";
 
@@ -26,6 +29,7 @@ const SafeIcon = ({
 export function NavigationHeader() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const { data: session, status } = useSession();
   const [mounted, setMounted] = React.useState(false);
 
   // Avoid hydration mismatch
@@ -34,6 +38,15 @@ export function NavigationHeader() {
   }, []);
 
   const isActive = (path: string) => pathname === path;
+
+  const handleSignOut = () => {
+    signOut({ callbackUrl: "/auth/signin" });
+  };
+
+  // Don't show navigation on auth pages
+  if (pathname.startsWith("/auth")) {
+    return null;
+  }
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 ">
@@ -110,6 +123,22 @@ export function NavigationHeader() {
           </Link>
         </nav>
         <div className="flex flex-1 items-center justify-end space-x-2">
+          {mounted && status === "authenticated" && (
+            <>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <SafeIcon icon={UserIcon} className="size-4" />
+                <span>{session.user?.name}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleSignOut}
+                aria-label="Sign out"
+              >
+                <SafeIcon icon={LogOutIcon} className="size-4" />
+              </Button>
+            </>
+          )}
           <Button
             variant="ghost"
             size="icon"

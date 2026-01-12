@@ -1,5 +1,6 @@
 export interface Tenant {
-  id: string;
+  _id: string;
+  userId: string;
   name: string;
   baseRent: number;
   contact?: string;
@@ -7,7 +8,8 @@ export interface Tenant {
 }
 
 export interface Invoice {
-  id: string;
+  _id: string;
+  userId: string;
   tenantId: string;
   tenantName: string;
   date: string;
@@ -22,4 +24,18 @@ export interface Invoice {
 
 export interface Settings {
   electricityRate: number;
+}
+
+import { DefaultSession } from "next-auth";
+
+declare module "next-auth" {
+  interface Session {
+    user: {
+      id: string;
+    } & DefaultSession["user"];
+  }
+
+  interface User {
+    id: string;
+  }
 }

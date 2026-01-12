@@ -1,162 +1,112 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
-import type { Tenant } from "@/lib/types";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
+import { logger } from "@/lib/logger";
 
-const TENANTS_DIR = path.join(process.cwd(), "data", "tenants");
-const TENANTS_FILE = path.join(TENANTS_DIR, "tenants.json");
-
-// Ensure directory exists
-async function ensureDirectory() {
-  try {
-    await fs.mkdir(TENANTS_DIR, { recursive: true });
-  } catch (error) {
-    // Directory might already exist
-  }
-}
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 // GET - Get all tenants
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get("userId");
+
   try {
-    await ensureDirectory();
-    
-    try {
-      const data = await fs.readFile(TENANTS_FILE, "utf-8");
-      const tenants: Tenant[] = JSON.parse(data);
-      return NextResponse.json(tenants);
-    } catch (error) {
-      // File doesn't exist, return empty array
-      return NextResponse.json([]);
+    if (!userId) {
+      return NextResponse.json(
+        { error: "User ID is required" },
+        { status: 400 },
+      );
     }
+
+    const tenants = await convex.query(api.tasks.getTenants, {
+      userId: userId as any,
+    });
+
+    return NextResponse.json(tenants);
   } catch (error) {
-    console.error("Error reading tenants:", error);
+    logger.error("api_tenants_get_failed", error as Error, { userId });
     return NextResponse.json(
       { error: "Failed to read tenants" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 // POST - Create new tenant
 export async function POST(request: NextRequest) {
+  let tenantData: any;
+
   try {
-    await ensureDirectory();
-    
-    const tenant: Omit<Tenant, "id" | "createdAt"> = await request.json();
-    
-    // Read existing tenants
-    let tenants: Tenant[] = [];
-    try {
-      const data = await fs.readFile(TENANTS_FILE, "utf-8");
-      tenants = JSON.parse(data);
-    } catch (error) {
-      // File doesn't exist, start with empty array
+    tenantData = await request.json();
+
+    if (!tenantData.userId) {
+      return NextResponse.json(
+        { error: "User ID is required" },
+        { status: 400 },
+      );
     }
-    
-    // Create new tenant
-    const newTenant: Tenant = {
-      id: Date.now().toString(),
-      ...tenant,
-      createdAt: new Date().toISOString(),
-    };
-    
-    tenants.push(newTenant);
-    
-    // Save to file
-    await fs.writeFile(TENANTS_FILE, JSON.stringify(tenants, null, 2));
-    
+
+    const newTenant = await convex.mutation(api.tasks.createTenant, tenantData);
+
     return NextResponse.json(newTenant);
   } catch (error) {
-    console.error("Error creating tenant:", error);
+    logger.error("api_tenants_post_failed", error as Error, { tenantData });
     return NextResponse.json(
       { error: "Failed to create tenant" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 // PUT - Update tenant
 export async function PUT(request: NextRequest) {
+  let updatedTenant: any;
+
   try {
-    await ensureDirectory();
-    
-    const updatedTenant: Tenant = await request.json();
-    
-    // Read existing tenants
-    let tenants: Tenant[] = [];
-    try {
-      const data = await fs.readFile(TENANTS_FILE, "utf-8");
-      tenants = JSON.parse(data);
-    } catch (error) {
+    updatedTenant = await request.json();
+
+    if (!updatedTenant.tenantId) {
       return NextResponse.json(
-        { error: "No tenants found" },
-        { status: 404 }
+        { error: "Tenant ID is required" },
+        { status: 400 },
       );
     }
-    
-    // Find and update tenant
-    const index = tenants.findIndex((t) => t.id === updatedTenant.id);
-    if (index === -1) {
-      return NextResponse.json(
-        { error: "Tenant not found" },
-        { status: 404 }
-      );
-    }
-    
-    tenants[index] = updatedTenant;
-    
-    // Save to file
-    await fs.writeFile(TENANTS_FILE, JSON.stringify(tenants, null, 2));
-    
-    return NextResponse.json(updatedTenant);
+
+    const result = await convex.mutation(api.tasks.updateTenant, updatedTenant);
+
+    return NextResponse.json(result);
   } catch (error) {
-    console.error("Error updating tenant:", error);
+    logger.error("api_tenants_put_failed", error as Error, { updatedTenant });
     return NextResponse.json(
       { error: "Failed to update tenant" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 // DELETE - Delete tenant
 export async function DELETE(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const tenantId = searchParams.get("id");
+
   try {
-    await ensureDirectory();
-    
-    const { searchParams } = new URL(request.url);
-    const id = searchParams.get("id");
-    
-    if (!id) {
+    if (!tenantId) {
       return NextResponse.json(
         { error: "Tenant ID is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
-    
-    // Read existing tenants
-    let tenants: Tenant[] = [];
-    try {
-      const data = await fs.readFile(TENANTS_FILE, "utf-8");
-      tenants = JSON.parse(data);
-    } catch (error) {
-      return NextResponse.json(
-        { error: "No tenants found" },
-        { status: 404 }
-      );
-    }
-    
-    // Remove tenant
-    tenants = tenants.filter((t) => t.id !== id);
-    
-    // Save to file
-    await fs.writeFile(TENANTS_FILE, JSON.stringify(tenants, null, 2));
-    
+
+    await convex.mutation(api.tasks.deleteTenant, {
+      tenantId: tenantId as any,
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error deleting tenant:", error);
+    logger.error("api_tenants_delete_failed", error as Error, { tenantId });
     return NextResponse.json(
       { error: "Failed to delete tenant" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

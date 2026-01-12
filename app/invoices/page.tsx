@@ -37,8 +37,10 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 
 export default function InvoiceHistoryPage() {
+  const { data: session } = useSession();
   const [invoices, setInvoices] = React.useState<Invoice[]>([]);
   const [invoicesWithDates, setInvoicesWithDates] = React.useState<
     (Invoice & { dateObj: Date })[]
@@ -86,7 +88,7 @@ export default function InvoiceHistoryPage() {
       result = result.filter(
         (invoice) =>
           invoice.tenantName.toLowerCase().includes(term) ||
-          invoice.id.toLowerCase().includes(term) ||
+          invoice._id.toLowerCase().includes(term) ||
           new Date(invoice.date).toLocaleDateString().includes(term),
       );
     }
@@ -115,10 +117,15 @@ export default function InvoiceHistoryPage() {
   }, [invoicesWithDates, selectedTenantId, searchTerm, sortBy]);
 
   const loadData = async () => {
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
     try {
       const [invoicesResponse, tenantsResponse] = await Promise.all([
-        fetch("/api/invoices"),
-        fetch("/api/tenants"),
+        fetch(`/api/invoices?userId=${session.user.id}`),
+        fetch(`/api/tenants?userId=${session.user.id}`),
       ]);
 
       if (invoicesResponse.ok) {
@@ -147,7 +154,7 @@ export default function InvoiceHistoryPage() {
     filteredInvoices.reduce((sum, invoice) => sum + invoice.total, 0);
 
   const getTenantName = (tenantId: string) => {
-    const tenant = tenants.find((t) => t.id === tenantId);
+    const tenant = tenants.find((t) => t._id === tenantId);
     return tenant?.name || "Unknown Tenant";
   };
 
@@ -258,7 +265,7 @@ export default function InvoiceHistoryPage() {
                   <SelectContent>
                     <SelectItem value="all">All Tenants</SelectItem>
                     {tenants.map((tenant) => (
-                      <SelectItem key={tenant.id} value={tenant.id}>
+                      <SelectItem key={tenant._id} value={tenant._id}>
                         {tenant.name}
                       </SelectItem>
                     ))}
@@ -324,7 +331,7 @@ export default function InvoiceHistoryPage() {
             <div className="space-y-4">
               {filteredInvoices.map((invoice) => (
                 <Card
-                  key={invoice.id}
+                  key={invoice._id}
                   className="cursor-pointer"
                   onClick={() => setSelectedInvoice(invoice)}
                 >
@@ -335,7 +342,7 @@ export default function InvoiceHistoryPage() {
                           <h3 className="font-semibold text-lg">
                             {invoice.tenantName}
                           </h3>
-                          <Badge variant="secondary">ID: {invoice.id}</Badge>
+                          <Badge variant="secondary">ID: {invoice._id}</Badge>
                         </div>
                         <div className="flex items-center gap-4 text-sm text-muted-foreground">
                           <div className="flex items-center gap-1">

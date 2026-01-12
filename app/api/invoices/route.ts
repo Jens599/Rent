@@ -1,110 +1,106 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
-import type { Invoice } from "@/lib/types";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
+import { logger } from "@/lib/logger";
 
-const INVOICES_DIR = path.join(process.cwd(), "data", "invoices");
-const INVOICES_FILE = path.join(INVOICES_DIR, "invoices.json");
-
-// Ensure directory exists
-async function ensureDirectory() {
-  try {
-    await fs.mkdir(INVOICES_DIR, { recursive: true });
-  } catch (error) {
-    // Directory might already exist
-  }
-}
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 // GET - Get all invoices or filter by tenantId
 export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const tenantId = searchParams.get("tenantId");
+  const userId = searchParams.get("userId");
+
   try {
-    await ensureDirectory();
-    
-    const { searchParams } = new URL(request.url);
-    const tenantId = searchParams.get("tenantId");
-    
-    try {
-      const data = await fs.readFile(INVOICES_FILE, "utf-8");
-      let invoices: Invoice[] = JSON.parse(data);
-      
-      // Filter by tenantId if provided
-      if (tenantId) {
-        invoices = invoices.filter((inv) => inv.tenantId === tenantId);
-      }
-      
-      // Sort by date (newest first)
-      invoices.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
-      return NextResponse.json(invoices);
-    } catch (error) {
-      // File doesn't exist, return empty array
-      return NextResponse.json([]);
+    if (!userId) {
+      return NextResponse.json(
+        { error: "User ID is required" },
+        { status: 400 },
+      );
     }
+
+    let invoices;
+    if (tenantId) {
+      invoices = await convex.query(api.tasks.getInvoicesByTenant, {
+        userId: userId as any,
+        tenantId: tenantId as any,
+      });
+    } else {
+      invoices = await convex.query(api.tasks.getInvoices, {
+        userId: userId as any,
+      });
+    }
+
+    // Sort by date (newest first)
+    invoices.sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+
+    return NextResponse.json(invoices);
   } catch (error) {
-    console.error("Error reading invoices:", error);
+    logger.error("api_invoices_get_failed", error as Error, {
+      userId,
+      tenantId,
+    });
     return NextResponse.json(
       { error: "Failed to read invoices" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
 // POST - Create new invoice
 export async function POST(request: NextRequest) {
+  let invoiceData: any;
+
   try {
-    await ensureDirectory();
-    
-    const invoiceData: Omit<Invoice, "id"> = await request.json();
-    
-    // Read existing invoices
-    let invoices: Invoice[] = [];
-    try {
-      const data = await fs.readFile(INVOICES_FILE, "utf-8");
-      invoices = JSON.parse(data);
-    } catch (error) {
-      // File doesn't exist, start with empty array
+    invoiceData = await request.json();
+
+    if (!invoiceData.userId) {
+      return NextResponse.json(
+        { error: "User ID is required" },
+        { status: 400 },
+      );
     }
-    
-    // Create new invoice
-    const newInvoice: Invoice = {
-      id: Date.now().toString(),
-      ...invoiceData,
-    };
-    
-    invoices.push(newInvoice);
-    
-    // Save to file
-    await fs.writeFile(INVOICES_FILE, JSON.stringify(invoices, null, 2));
-    
+
+    const newInvoice = await convex.mutation(
+      api.tasks.createInvoice,
+      invoiceData,
+    );
+
     return NextResponse.json(newInvoice);
   } catch (error) {
-    console.error("Error creating invoice:", error);
+    logger.error("api_invoices_post_failed", error as Error, { invoiceData });
     return NextResponse.json(
       { error: "Failed to create invoice" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
 
-// GET last invoice for a tenant
-export async function getLastInvoiceForTenant(tenantId: string): Promise<Invoice | null> {
+// DELETE - Delete invoice
+export async function DELETE(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const invoiceId = searchParams.get("id");
+
   try {
-    await ensureDirectory();
-    
-    try {
-      const data = await fs.readFile(INVOICES_FILE, "utf-8");
-      const invoices: Invoice[] = JSON.parse(data);
-      
-      // Filter by tenantId and sort by date
-      const tenantInvoices = invoices
-        .filter((inv) => inv.tenantId === tenantId)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      
-      return tenantInvoices.length > 0 ? tenantInvoices[0] : null;
-    } catch (error) {
-      return null;
+    if (!invoiceId) {
+      return NextResponse.json(
+        { error: "Invoice ID is required" },
+        { status: 400 },
+      );
     }
+
+    await convex.mutation(api.tasks.deleteInvoice, {
+      invoiceId: invoiceId as any,
+    });
+
+    return NextResponse.json({ success: true });
   } catch (error) {
-    return null;
+    logger.error("api_invoices_delete_failed", error as Error, { invoiceId });
+    return NextResponse.json(
+      { error: "Failed to delete invoice" },
+      { status: 500 },
+    );
   }
 }

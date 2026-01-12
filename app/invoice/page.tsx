@@ -37,10 +37,12 @@ import { cn } from "@/lib/utils";
 import { InvoiceDisplay } from "@/components/invoice-display";
 import type { Tenant, Invoice } from "@/lib/types";
 import { toast } from "sonner";
+import { useSession } from "next-auth/react";
 
 const DEFAULT_ELECTRICITY_RATE = 15; // Default Rs. 15 per unit
 
 export default function InvoicePage() {
+  const { data: session } = useSession();
   const [tenants, setTenants] = React.useState<Tenant[]>([]);
   const [selectedTenantId, setSelectedTenantId] = React.useState<string>("");
   const [invoiceDateTime, setInvoiceDateTime] = React.useState<Date>(
@@ -66,7 +68,7 @@ export default function InvoicePage() {
   // Load tenant data and previous invoice when tenant is selected
   React.useEffect(() => {
     if (selectedTenantId) {
-      const tenant = tenants.find((t) => t.id === selectedTenantId);
+      const tenant = tenants.find((t) => t._id === selectedTenantId);
       if (tenant) {
         // Auto-populate base rent
         setBaseRent(tenant.baseRent.toString());
@@ -90,8 +92,13 @@ export default function InvoicePage() {
   }, []);
 
   const loadSettings = async () => {
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
     try {
-      const response = await fetch("/api/settings");
+      const response = await fetch(`/api/settings?userId=${session.user.id}`);
       if (response.ok) {
         const data = await response.json();
         setElectricityRate(data.electricityRate);
@@ -102,8 +109,13 @@ export default function InvoicePage() {
   };
 
   const loadTenants = async () => {
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
     try {
-      const response = await fetch("/api/tenants");
+      const response = await fetch(`/api/tenants?userId=${session.user.id}`);
       const data = await response.json();
       setTenants(data);
     } catch (error) {
@@ -112,15 +124,24 @@ export default function InvoicePage() {
   };
 
   const loadLastInvoice = async (tenantId: string) => {
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
     try {
-      const response = await fetch(`/api/invoices/last?tenantId=${tenantId}`);
+      const response = await fetch(
+        `/api/invoices?userId=${session.user.id}&tenantId=${tenantId}`,
+      );
       if (response.ok) {
-        const lastInvoice = await response.json();
-        if (lastInvoice) {
+        const invoices = await response.json();
+        if (invoices && invoices.length > 0) {
+          // Get the most recent invoice (already sorted by date in API)
+          const lastInvoice = invoices[0];
           // Auto-populate previous month reading from last invoice's current reading
           setPreviousMonthReading(lastInvoice.currentMonthReading.toString());
         } else {
-          // No previous invoice, clear the field
+          // No previous invoice, clear field
           setPreviousMonthReading("");
         }
       }
@@ -166,18 +187,6 @@ export default function InvoicePage() {
       }
     }
 
-    // Base rent validation
-    if (!baseRent) {
-      newErrors.baseRent = "Please enter base rent";
-    } else {
-      const rent = parseFloat(baseRent);
-      if (isNaN(rent) || rent <= 0) {
-        newErrors.baseRent = "Base rent must be a positive number";
-      } else if (rent > 1000000) {
-        newErrors.baseRent = "Base rent seems unusually high";
-      }
-    }
-
     // Current reading validation
     if (!currentMonthReading) {
       newErrors.currentReading = "Please enter current month reading";
@@ -186,19 +195,21 @@ export default function InvoicePage() {
       if (isNaN(current) || current < 0) {
         newErrors.currentReading =
           "Current reading must be a non-negative number";
+      } else if (previousMonthReading) {
+        const previous = parseFloat(previousMonthReading);
+        if (!isNaN(previous) && previous >= 0 && previous > current) {
+          newErrors.currentReading =
+            "Current reading cannot be less than previous reading";
+        }
       }
     }
 
     // Previous reading validation (optional but if provided, must be valid)
     if (previousMonthReading) {
       const previous = parseFloat(previousMonthReading);
-      const current = parseFloat(currentMonthReading);
       if (isNaN(previous) || previous < 0) {
         newErrors.previousReading =
           "Previous reading must be a non-negative number";
-      } else if (current && previous > current) {
-        newErrors.previousReading =
-          "Previous reading cannot be greater than current reading";
       }
     }
 
@@ -212,13 +223,19 @@ export default function InvoicePage() {
       return;
     }
 
-    const tenant = tenants.find((t) => t.id === selectedTenantId);
+    const tenant = tenants.find((t) => t._id === selectedTenantId);
     if (!tenant) return;
+
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
 
     setLoading(true);
 
     try {
-      const invoiceData: Omit<Invoice, "id"> = {
+      const invoiceData = {
+        userId: session.user.id,
         tenantId: selectedTenantId,
         tenantName: tenant.name,
         date: invoiceDateTime.toISOString(),
@@ -258,7 +275,7 @@ export default function InvoicePage() {
     // Keep tenant, date, base rent, and previous reading
   };
 
-  const selectedTenant = tenants.find((t) => t.id === selectedTenantId);
+  const selectedTenant = tenants.find((t) => t._id === selectedTenantId);
 
   return (
     <div className="container mx-auto p-6 max-w-4xl">
@@ -311,7 +328,7 @@ export default function InvoicePage() {
                         </SelectItem>
                       ) : (
                         tenants.map((tenant) => (
-                          <SelectItem key={tenant.id} value={tenant.id}>
+                          <SelectItem key={tenant._id} value={tenant._id}>
                             {tenant.name} (Rs.{" "}
                             {tenant.baseRent.toLocaleString()})
                           </SelectItem>
@@ -338,31 +355,20 @@ export default function InvoicePage() {
                 </Field>
 
                 <Field>
-                  <FieldLabel htmlFor="baseRent">Base Rent (Rs.) *</FieldLabel>
-                  <Input
-                    id="baseRent"
-                    type="number"
-                    step="0.01"
-                    value={baseRent}
-                    onChange={(e) => {
-                      setBaseRent(e.target.value);
-                      if (errors.baseRent) {
-                        setErrors((prev) => ({ ...prev, baseRent: "" }));
-                      }
-                    }}
-                    aria-invalid={!!errors.baseRent}
-                    required
-                    placeholder="Enter base rent"
-                    className="transition-all duration-200 hover:border-primary focus:scale-[1.02]"
-                  />
-                  {errors.baseRent && (
-                    <FieldError>{errors.baseRent}</FieldError>
-                  )}
-                  {selectedTenant && !errors.baseRent && (
-                    <FieldDescription>
-                      Default: Rs. {selectedTenant.baseRent.toLocaleString()}
-                    </FieldDescription>
-                  )}
+                  <FieldLabel>Base Rent (Rs.)</FieldLabel>
+                  <div className="p-3 border rounded-md bg-muted/50">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">
+                        Rs.{" "}
+                        {selectedTenant
+                          ? selectedTenant.baseRent.toLocaleString()
+                          : "0"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Auto-populated from selected tenant
+                    </p>
+                  </div>
                 </Field>
 
                 <div className="grid grid-cols-2 gap-4">

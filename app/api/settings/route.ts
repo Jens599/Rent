@@ -1,40 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
-import type { Settings } from "@/lib/types";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
+import { logger } from "@/lib/logger";
 
-const SETTINGS_DIR = path.join(process.cwd(), "data", "settings");
-const SETTINGS_FILE = path.join(SETTINGS_DIR, "settings.json");
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 // Default settings
-const DEFAULT_SETTINGS: Settings = {
+const DEFAULT_SETTINGS = {
   electricityRate: 15, // Default Rs. 15 per unit
 };
 
-// Ensure directory exists
-async function ensureDirectory() {
-  try {
-    await fs.mkdir(SETTINGS_DIR, { recursive: true });
-  } catch (error) {
-    // Directory might already exist
-  }
-}
-
 // GET - Get current settings
-export async function GET() {
-  try {
-    await ensureDirectory();
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const userId = searchParams.get("userId");
 
-    try {
-      const data = await fs.readFile(SETTINGS_FILE, "utf-8");
-      const settings: Settings = JSON.parse(data);
-      return NextResponse.json(settings);
-    } catch (error) {
-      // File doesn't exist, return default settings
-      return NextResponse.json(DEFAULT_SETTINGS);
+  try {
+    if (!userId) {
+      return NextResponse.json(
+        { error: "User ID is required" },
+        { status: 400 },
+      );
     }
+
+    const settings = await convex.query(api.tasks.getSettings, {
+      userId: userId as any,
+    });
+
+    return NextResponse.json(settings || DEFAULT_SETTINGS);
   } catch (error) {
-    console.error("Error reading settings:", error);
+    logger.error("api_settings_get_failed", error as Error, { userId });
     return NextResponse.json(
       { error: "Failed to read settings" },
       { status: 500 },
@@ -44,10 +39,17 @@ export async function GET() {
 
 // POST - Update settings
 export async function POST(request: NextRequest) {
-  try {
-    await ensureDirectory();
+  let settings: any;
 
-    const settings: Settings = await request.json();
+  try {
+    settings = await request.json();
+
+    if (!settings.userId) {
+      return NextResponse.json(
+        { error: "User ID is required" },
+        { status: 400 },
+      );
+    }
 
     // Validate settings
     if (
@@ -60,12 +62,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Save to file
-    await fs.writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+    const result = await convex.mutation(api.tasks.upsertSettings, {
+      userId: settings.userId,
+      electricityRate: settings.electricityRate,
+    });
 
-    return NextResponse.json(settings);
+    return NextResponse.json({ success: true, settingsId: result });
   } catch (error) {
-    console.error("Error updating settings:", error);
+    logger.error("api_settings_post_failed", error as Error, { settings });
     return NextResponse.json(
       { error: "Failed to update settings" },
       { status: 500 },
