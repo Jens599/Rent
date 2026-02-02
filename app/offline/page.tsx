@@ -1,5 +1,13 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { WifiOff, RefreshCw, Home } from "lucide-react";
 
 export default function OfflinePage() {
@@ -20,12 +28,12 @@ export default function OfflinePage() {
           </div>
           <CardTitle className="text-2xl font-bold">You're Offline</CardTitle>
           <CardDescription className="text-base">
-            It looks like you've lost your internet connection. Some features may not be available until you're back online.
+            It looks like you've lost your internet connection.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Don't worry! You can still access previously loaded content. Try refreshing when your connection is restored.
+            Please try again with an active connecttion.
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Button onClick={handleRefresh} className="flex-1">
