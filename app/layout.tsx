@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { NavigationHeader } from "@/components/navigation-header";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/components/auth-provider";
+import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -63,6 +64,7 @@ export default function RootLayout({
             <NavigationHeader />
             <main>{children}</main>
             <Toaster />
+            <PWAInstallPrompt />
           </ThemeProvider>
         </AuthProvider>
       </body>
