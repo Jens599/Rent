@@ -5,7 +5,6 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { NavigationHeader } from "@/components/navigation-header";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/components/auth-provider";
-import { PWAInstallPrompt } from "@/components/pwa-install-prompt";
 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
@@ -26,22 +25,6 @@ export const metadata: Metadata = {
   title: "Rent Invoice Generator",
   description:
     "Manage tenants and generate rent invoices with automatic electricity calculations",
-  manifest: "/manifest.json",
-  themeColor: "#0f172a",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "Rent Invoice Generator",
-  },
-  icons: {
-    icon: [
-      { url: "/icons/icon-192x192.svg", sizes: "192x192", type: "image/svg+xml" },
-      { url: "/icons/icon-512x512.svg", sizes: "512x512", type: "image/svg+xml" },
-    ],
-    apple: [
-      { url: "/icons/icon-152x152.svg", sizes: "152x152", type: "image/svg+xml" },
-    ],
-  },
 };
 
 export default function RootLayout({
@@ -64,7 +47,6 @@ export default function RootLayout({
             <NavigationHeader />
             <main>{children}</main>
             <Toaster />
-            <PWAInstallPrompt />
           </ThemeProvider>
         </AuthProvider>
       </body>
