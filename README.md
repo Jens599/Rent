@@ -1,6 +1,6 @@
 # Rent Invoice Generator
 
-A professional rent invoice management system built with Next.js that automates electricity billing calculations and streamlines tenant management.
+A professional rent invoice management system built with Next.js that automates electricity billing calculations and streamlines tenant management. Features Progressive Web App (PWA) capabilities for offline functionality and installability.
 
 ## Features
 
@@ -10,16 +10,21 @@ A professional rent invoice management system built with Next.js that automates 
 - **Meter Tracking**: Automatic carry-over of previous month readings from last invoice
 - **Real-time Preview**: See calculations update as you type
 - **Invoice History**: Browse and search through all generated invoices
+- **PWA Support**: Install as a desktop/mobile app with offline functionality
 - **Responsive Design**: Modern UI built with Tailwind CSS and shadcn/ui components
+- **Backend Integration**: Convex database for real-time data synchronization
 
 ## Tech Stack
 
 - **Framework**: Next.js 16.1.1 with App Router
-- **UI**: React 19.2.3, Tailwind CSS, shadcn/ui
+- **Frontend**: React 19.2.3, TypeScript 5
+- **UI**: Tailwind CSS v4, shadcn/ui components
 - **Icons**: Lucide React
+- **Backend**: Convex for real-time database and functions
+- **Authentication**: NextAuth.js
 - **Date Handling**: date-fns, react-day-picker
-- **Styling**: CSS-in-JS with Tailwind CSS v4
-- **TypeScript**: Full type safety throughout the application
+- **PWA**: Serwist for service worker and caching
+- **Development**: ESLint, PostCSS, esbuild
 
 ## Getting Started
 
@@ -45,6 +50,12 @@ yarn dev
 pnpm dev
 # or
 bun dev
+```
+
+For Convex backend development:
+
+```bash
+npm run convex:dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
