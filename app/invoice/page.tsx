@@ -35,8 +35,8 @@ export default function InvoicePage() {
   const [selectedTenant, setSelectedTenant] = React.useState<Tenant | null>(
     null,
   );
-  const [invoiceDateTime, setInvoiceDateTime] = React.useState<Date>(
-    new Date(),
+  const [invoiceDateTime, setInvoiceDateTime] = React.useState<Date | null>(
+    null,
   );
   const [baseRent, setBaseRent] = React.useState<string>("");
   const [previousMonthReading, setPreviousMonthReading] =
@@ -51,6 +51,8 @@ export default function InvoicePage() {
 
   // Load tenants and settings
   React.useEffect(() => {
+    // Initialize invoice date time
+    setInvoiceDateTime(new Date());
     loadTenants();
     loadSettings();
   }, []);
@@ -224,7 +226,7 @@ export default function InvoicePage() {
         userId: session.user.id,
         tenantId: selectedTenant._id,
         tenantName: selectedTenant.name,
-        date: invoiceDateTime.toISOString(),
+        date: invoiceDateTime!.toISOString(),
         baseRent: parseFloat(baseRent),
         previousMonthReading: parseFloat(previousMonthReading) || 0,
         currentMonthReading: parseFloat(currentMonthReading),
@@ -406,7 +408,7 @@ export default function InvoicePage() {
                     <div className="flex items-center gap-2">
                       <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                       <span className="font-medium">
-                        {format(invoiceDateTime, "PPP 'at' p")}
+                        {format(invoiceDateTime!, "PPP 'at' p")}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
