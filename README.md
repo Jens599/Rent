@@ -82,10 +82,13 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 │   └── page.tsx           # Dashboard/homepage
 ├── components/
 │   └── ui/                # shadcn/ui components
+├── convex/                # Convex backend functions and schema
 ├── lib/
 │   ├── types.ts           # TypeScript type definitions
 │   └── utils.ts           # Utility functions
-└── public/                # Static assets
+├── public/                # Static assets and PWA icons
+├── pwa_implementation_guide.md  # PWA setup documentation
+└── serwist_pwa_setup.md   # Serwist PWA configuration guide
 ```
 
 ## Data Models
@@ -96,18 +99,44 @@ The application uses three main data types:
 - **Invoice**: Contains billing data with meter readings, calculations, and totals
 - **Settings**: Global application settings like electricity rates
 
+## PWA Features
+
+This application includes Progressive Web App capabilities:
+
+- **Offline Support**: Core functionality works without internet connection
+- **Installable**: Can be installed as a native app on desktop and mobile devices
+- **Background Sync**: Automatic data synchronization when connection is restored
+- **Caching**: Intelligent caching strategy for improved performance
+
 ## Development
 
-This project uses ESLint for code linting and TypeScript for type safety. The UI is built with modern React patterns and responsive design principles.
+This project uses:
+
+- **ESLint** for code linting and consistency
+- **TypeScript** for type safety throughout the application
+- **Convex** for backend-as-a-service with real-time database
+- **Serwist** for PWA functionality and service worker management
+- Modern React patterns and responsive design principles
+
+### Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+- `npm run convex:dev` - Start Convex development backend
 
 ## Learn More
 
 To learn more about the technologies used:
 
 - [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API
+- [Convex Documentation](https://docs.convex.dev/) - backend-as-a-service platform
+- [Serwist Documentation](https://serwist.pages.dev/) - PWA framework for Next.js
 - [Tailwind CSS](https://tailwindcss.com/docs) - utility-first CSS framework
 - [shadcn/ui](https://ui.shadcn.com/) - beautifully designed components
 - [Lucide Icons](https://lucide.dev/) - consistent icon library
+- [NextAuth.js](https://next-auth.js.org/) - authentication for Next.js
 
 ## Deploy on Vercel
 
