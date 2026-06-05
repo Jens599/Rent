@@ -42,6 +42,7 @@ import {
 import { toast } from "sonner";
 import {
   CalculatorIcon,
+  GripVerticalIcon,
   PlusIcon,
   RotateCcwIcon,
   SaveIcon,
@@ -94,7 +95,7 @@ function inferDependencies(module: CalculationModuleConfig, modules: Calculation
     .map((token) => outputByKey.get(token))
     .filter(Boolean)
     .map((dependency) => ({
-      moduleId: dependency!._id || dependency!.name,
+      moduleId: dependency!.name,
       outputKey: dependency!.output.key,
     }));
 }
@@ -111,8 +112,12 @@ export default function ModulesPage() {
   const [modules, setModules] = React.useState<CalculationModuleConfig[]>([]);
   const [presets, setPresets] = React.useState<CalculationModulePreset[]>([]);
   const [selectedModule, setSelectedModule] = React.useState<CalculationModuleConfig>(emptyModule);
+  const [activePresetId, setActivePresetId] = React.useState<string | null>(null);
+  const [activePresetName, setActivePresetName] = React.useState("");
+  const [activePresetDescription, setActivePresetDescription] = React.useState("");
   const [showModuleSetup, setShowModuleSetup] = React.useState(false);
   const [showPresetForm, setShowPresetForm] = React.useState(false);
+  const [showPresetDetails, setShowPresetDetails] = React.useState(false);
   const [editingInputIndex, setEditingInputIndex] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
@@ -128,6 +133,9 @@ export default function ModulesPage() {
     electricityRate: "15",
   });
   const [preview, setPreview] = React.useState<any>(null);
+  const [draggedModuleIndex, setDraggedModuleIndex] = React.useState<number | null>(null);
+  const [dropTarget, setDropTarget] = React.useState<{ index: number; position: "before" | "after" } | null>(null);
+  const moduleRowRefs = React.useRef<Array<HTMLDivElement | null>>([]);
 
   React.useEffect(() => {
     loadModules();
@@ -232,7 +240,8 @@ export default function ModulesPage() {
     }
   };
 
-  const applyPreset = async (presetId: string) => {
+  const applyPreset = async (presetId: string, edit = false) => {
+    const preset = presets.find((item) => item._id === presetId);
     try {
       const response = await fetch("/api/calculation-module-presets/apply", {
         method: "POST",
@@ -249,14 +258,57 @@ export default function ModulesPage() {
       setPreview(null);
       await loadModules();
       await loadPresets();
-      setShowModuleSetup(true);
+      if (edit) {
+        setActivePresetId(presetId);
+        setActivePresetName(preset?.name || "");
+        setActivePresetDescription(preset?.description || "");
+        setShowModuleSetup(true);
+      }
     } catch (error) {
       toast.error("Failed to apply preset");
     }
   };
 
   const editPreset = async (presetId: string) => {
-    await applyPreset(presetId);
+    await applyPreset(presetId, true);
+  };
+
+  const saveActivePresetChanges = async () => {
+    if (!activePresetId) {
+      toast.error("No preset is currently being edited");
+      return;
+    }
+
+    await persistActivePresetSnapshot(true);
+  };
+
+  const persistActivePresetSnapshot = async (showToast = false) => {
+    if (!activePresetId) return;
+
+    setPresetSaving(true);
+    try {
+      const response = await fetch("/api/calculation-module-presets", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          presetId: activePresetId,
+          name: activePresetName,
+          description: activePresetDescription,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.error || "Failed to save preset changes");
+        return;
+      }
+
+      if (showToast) toast.success("Preset changes saved");
+      await loadPresets();
+    } catch (error) {
+      toast.error("Failed to save preset changes");
+    } finally {
+      setPresetSaving(false);
+    }
   };
 
   const deletePreset = async (presetId: string) => {
@@ -282,6 +334,83 @@ export default function ModulesPage() {
     setErrors([]);
   };
 
+  const persistModuleOrder = async (orderedModules: CalculationModuleConfig[]) => {
+    try {
+      await Promise.all(
+        orderedModules.map((calculationModule) =>
+          fetch("/api/calculation-modules", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...calculationModule,
+              moduleId: calculationModule._id,
+            }),
+          }),
+        ),
+      );
+    } catch (error) {
+      toast.error("Failed to save module order");
+    }
+  };
+
+  const reorderModules = async (fromIndex: number, targetIndex: number) => {
+    if (fromIndex === targetIndex || fromIndex + 1 === targetIndex) return;
+
+    const reordered = [...modules];
+    const [movedModule] = reordered.splice(fromIndex, 1);
+    const adjustedTargetIndex = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    reordered.splice(adjustedTargetIndex, 0, movedModule);
+
+    const orderedModules = reordered.map((calculationModule, moduleIndex) => ({
+      ...calculationModule,
+      order: moduleIndex + 1,
+    }));
+
+    setModules(orderedModules);
+    setSelectedModule((current) =>
+      orderedModules.find((calculationModule) => calculationModule._id === current._id) || current,
+    );
+    await persistModuleOrder(orderedModules);
+    if (activePresetId) await persistActivePresetSnapshot();
+    toast.success("Module order updated");
+  };
+
+  const updateDropTargetFromPointer = (clientY: number) => {
+    let closestIndex = -1;
+    let closestPosition: "before" | "after" = "before";
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    moduleRowRefs.current.forEach((row, index) => {
+      if (!row) return;
+      const rect = row.getBoundingClientRect();
+      const beforeDistance = Math.abs(clientY - rect.top);
+      const afterDistance = Math.abs(clientY - rect.bottom);
+      const position = beforeDistance <= afterDistance ? "before" : "after";
+      const distance = beforeDistance <= afterDistance ? beforeDistance : afterDistance;
+
+      if (distance < closestDistance) {
+        closestIndex = index;
+        closestPosition = position;
+        closestDistance = distance;
+      }
+    });
+
+    if (closestIndex >= 0) {
+      setDropTarget({ index: closestIndex, position: closestPosition });
+    }
+  };
+
+  const finishPointerReorder = async () => {
+    if (draggedModuleIndex !== null && dropTarget) {
+      const targetIndex = dropTarget.position === "before"
+        ? dropTarget.index
+        : dropTarget.index + 1;
+      await reorderModules(draggedModuleIndex, targetIndex);
+    }
+    setDraggedModuleIndex(null);
+    setDropTarget(null);
+  };
+
   const insertFormulaToken = (token: string) => {
     updateSelected({ formula: `${selectedModule.formula}${selectedModule.formula ? " " : ""}${token}` });
   };
@@ -292,6 +421,7 @@ export default function ModulesPage() {
       label: "New Input",
       type: "number",
       required: true,
+      exposed: true,
       defaultValue: 0,
       helpText: "Enter the amount or rate used by this billing rule.",
     };
@@ -331,6 +461,7 @@ export default function ModulesPage() {
       }
 
       toast.success("Calculation module saved");
+      if (activePresetId) await persistActivePresetSnapshot();
       await loadModules();
       setSelectedModule(data);
     } catch (error) {
@@ -396,7 +527,15 @@ export default function ModulesPage() {
         </div>
         {showModuleSetup && (
           <div className="flex flex-wrap gap-2 justify-end">
-            <Button variant="outline" onClick={() => setShowModuleSetup(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowModuleSetup(false);
+                setActivePresetId(null);
+                setActivePresetName("");
+                setActivePresetDescription("");
+              }}
+            >
               Back to Presets
             </Button>
             <AlertDialog>
@@ -600,48 +739,183 @@ export default function ModulesPage() {
       </Card>
       ) : (
       <>
-      <div className="grid gap-6 lg:grid-cols-[280px_1fr_340px]">
+      <Card className="mb-4 border-primary/20 bg-muted/20" size="sm">
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle>{activePresetId ? activePresetName || "Editing Preset" : "Editing Current Module Setup"}</CardTitle>
+              {activePresetId && activePresetDescription && (
+                <CardDescription>{activePresetDescription}</CardDescription>
+              )}
+            </div>
+            <div className="flex gap-2">
+              {activePresetId && (
+                <Button variant="outline" size="sm" onClick={() => setShowPresetDetails((current) => !current)}>
+                  {showPresetDetails ? "Hide Details" : "Edit Details"}
+                </Button>
+              )}
+              {activePresetId && (
+                <Button onClick={saveActivePresetChanges} disabled={presetSaving} size="sm">
+                  <SaveIcon className="h-4 w-4" />
+                  {presetSaving ? "Saving..." : "Save Preset"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        {showPresetDetails && (
+        <CardContent>
+          {activePresetId ? (
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
+              <Field>
+                <FieldLabel>Preset Name</FieldLabel>
+                <Input
+                  value={activePresetName}
+                  onChange={(event) => setActivePresetName(event.target.value)}
+                  placeholder="Standard monthly billing"
+                />
+              </Field>
+              <Field>
+                <FieldLabel>Description</FieldLabel>
+                <Input
+                  value={activePresetDescription}
+                  onChange={(event) => setActivePresetDescription(event.target.value)}
+                  placeholder="Base rent + electricity"
+                />
+              </Field>
+              <div className="flex items-end">
+                <Button onClick={saveActivePresetChanges} disabled={presetSaving} className="w-full">
+                  <SaveIcon className="h-4 w-4" />
+                  {presetSaving ? "Saving..." : "Save Preset Changes"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-muted-foreground">
+                These edits affect the active module setup. Save as a new preset from the preset screen if you want to reuse it.
+              </p>
+            </div>
+          )}
+        </CardContent>
+        )}
+      </Card>
+
+      <div className="grid gap-4 lg:grid-cols-[280px_1fr_340px]">
         <Card className="h-fit">
           <CardHeader>
             <CardTitle>Modules</CardTitle>
             <CardDescription>{modules.length} configured modules</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
-            {modules.map((calculationModule) => (
-              <button
+            {modules.map((calculationModule, index) => (
+              <div
                 key={calculationModule._id || calculationModule.name}
-                type="button"
-                onClick={() => setSelectedModule(calculationModule)}
-                className={`w-full border p-3 text-left transition-colors ${
-                  selectedModule._id === calculationModule._id ? "bg-accent" : "hover:bg-muted/50"
+                ref={(element) => {
+                  moduleRowRefs.current[index] = element;
+                }}
+                draggable
+                onDragStart={(event) => {
+                  setDraggedModuleIndex(index);
+                  event.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const offset = event.clientY - rect.top;
+                  const position = offset < rect.height / 2 ? "before" : "after";
+                  setDropTarget({ index, position });
+                }}
+                onDrop={async (event) => {
+                  event.preventDefault();
+                  if (draggedModuleIndex !== null && dropTarget) {
+                    const targetIndex = dropTarget.position === "before"
+                      ? dropTarget.index
+                      : dropTarget.index + 1;
+                    await reorderModules(draggedModuleIndex, targetIndex);
+                  }
+                  setDraggedModuleIndex(null);
+                  setDropTarget(null);
+                }}
+                onDragEnd={() => {
+                  setDraggedModuleIndex(null);
+                  setDropTarget(null);
+                }}
+                onPointerMove={(event) => {
+                  if (draggedModuleIndex === null || event.pointerType === "mouse") return;
+                  event.preventDefault();
+                  updateDropTargetFromPointer(event.clientY);
+                }}
+                onPointerUp={async (event) => {
+                  if (event.pointerType === "mouse") return;
+                  await finishPointerReorder();
+                }}
+                onPointerCancel={() => {
+                  setDraggedModuleIndex(null);
+                  setDropTarget(null);
+                }}
+                className={`group relative flex w-full items-center gap-2 border p-2 text-left transition-colors ${
+                  selectedModule._id === calculationModule._id
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                    : "bg-background/40 hover:bg-muted/60"
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium">{calculationModule.name}</span>
-                  <Badge variant={calculationModule.enabled ? "secondary" : "outline"}>
-                    {calculationModule.enabled ? "On" : "Off"}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Outputs {calculationModule.output.label}</p>
-              </button>
+                {draggedModuleIndex !== null && dropTarget?.index === index && draggedModuleIndex !== index && (
+                  <div className={`absolute left-0 right-0 z-10 h-1.5 rounded-full bg-primary shadow-[0_0_0_3px_hsl(var(--background))] ${
+                    dropTarget.position === "before" ? "-top-1" : "-bottom-1"
+                  }`} />
+                )}
+                <button
+                  type="button"
+                  aria-label="Drag to reorder module"
+                  className="touch-none p-1"
+                  onPointerDown={(event) => {
+                    if (event.pointerType === "mouse") return;
+                    event.currentTarget.setPointerCapture(event.pointerId);
+                    setDraggedModuleIndex(index);
+                    updateDropTargetFromPointer(event.clientY);
+                  }}
+                >
+                  <GripVerticalIcon className={`h-4 w-4 shrink-0 cursor-grab ${
+                    selectedModule._id === calculationModule._id ? "text-primary-foreground/80" : "text-muted-foreground"
+                  }`} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedModule(calculationModule)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{calculationModule.name}</span>
+                    <Badge variant={calculationModule.enabled ? "secondary" : "outline"} className="shrink-0">
+                      {calculationModule.enabled ? "On" : "Off"}
+                    </Badge>
+                  </div>
+                  <p className={`mt-0.5 truncate text-xs ${
+                    selectedModule._id === calculationModule._id ? "text-primary-foreground/80" : "text-muted-foreground"
+                  }`}>
+                    Outputs {calculationModule.output.label}
+                  </p>
+                </button>
+              </div>
             ))}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
+        <Card size="sm">
+          <CardHeader className="border-b">
             <CardTitle>{selectedModule._id ? "Edit Module" : "Create Module"}</CardTitle>
             <CardDescription>Use the buttons in the formula builder to avoid typing technical expressions.</CardDescription>
           </CardHeader>
           <CardContent>
-            <FieldGroup>
+            <FieldGroup className="gap-4">
               {errors.length > 0 && (
                 <div className="border border-destructive/50 bg-destructive/5 p-3 text-destructive space-y-1">
                   {errors.map((error) => <p key={error}>{error}</p>)}
                 </div>
               )}
 
-              <Card className="bg-muted/20 border-primary/20">
+              <Card className="bg-muted/20 border-primary/20" size="sm">
                 <CardHeader>
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -653,7 +927,7 @@ export default function ModulesPage() {
                     </Badge>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-3">
                   <div className="grid gap-4 md:grid-cols-[1fr_180px_180px]">
                     <Field>
                       <FieldLabel>Name</FieldLabel>
@@ -694,13 +968,13 @@ export default function ModulesPage() {
                       value={selectedModule.description || ""}
                       onChange={(event) => updateSelected({ description: event.target.value })}
                       placeholder="Example: Calculates electricity charges from units consumed and the rate per unit."
-                      className="min-h-20"
+                      className="min-h-16"
                     />
                   </Field>
                 </CardContent>
               </Card>
 
-              <Card className="bg-muted/20">
+              <Card className="bg-muted/20" size="sm">
                 <CardHeader>
                   <CardTitle>Output</CardTitle>
                   <CardDescription>This is the value other modules can use.</CardDescription>
@@ -739,7 +1013,7 @@ export default function ModulesPage() {
                 </CardContent>
               </Card>
 
-              <Card className="bg-muted/20">
+              <Card className="bg-muted/20" size="sm">
                 <CardHeader>
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -767,6 +1041,7 @@ export default function ModulesPage() {
                         </div>
                         <p className="text-xs text-muted-foreground truncate">
                           Key: {input.key || "not set"} · Default: {String(input.defaultValue ?? "none")}
+                          {input.exposed === false ? " · Hidden" : " · Shown"}
                         </p>
                         {input.helpText && (
                           <p className="text-xs text-muted-foreground truncate">{input.helpText}</p>
@@ -850,6 +1125,35 @@ export default function ModulesPage() {
                           <FieldDescription>For checkbox use true/false. For choices use the numeric value.</FieldDescription>
                         </Field>
                       </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <Field>
+                          <FieldLabel>Show Input</FieldLabel>
+                          <Select
+                            value={selectedModule.inputs[editingInputIndex].exposed === false ? "hidden" : "shown"}
+                            onValueChange={(value) => updateInput(editingInputIndex, { exposed: value === "shown" })}
+                          >
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="shown">Show on invoice/test forms</SelectItem>
+                              <SelectItem value="hidden">Hide and use default value</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FieldDescription>Hide fixed values like a tax rate if users should not edit them during billing.</FieldDescription>
+                        </Field>
+                        <Field>
+                          <FieldLabel>Required</FieldLabel>
+                          <Select
+                            value={selectedModule.inputs[editingInputIndex].required ? "required" : "optional"}
+                            onValueChange={(value) => updateInput(editingInputIndex, { required: value === "required" })}
+                          >
+                            <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="required">Required</SelectItem>
+                              <SelectItem value="optional">Optional</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      </div>
                       {(selectedModule.inputs[editingInputIndex].type === "radio" || selectedModule.inputs[editingInputIndex].type === "select") && (
                         <Field>
                           <FieldLabel>Choices</FieldLabel>
@@ -886,7 +1190,7 @@ export default function ModulesPage() {
                 </DialogContent>
               </Dialog>
 
-              <Card className="bg-muted/20 border-primary/20">
+              <Card className="bg-muted/20 border-primary/20" size="sm">
                 <CardHeader>
                   <CardTitle>Formula Builder</CardTitle>
                   <CardDescription>Build the formula by clicking values and operations. No coding required.</CardDescription>
@@ -989,7 +1293,7 @@ export default function ModulesPage() {
                   <Input value={previewInputs[input.key] || ""} onChange={(event) => setPreviewInputs({ ...previewInputs, [input.key]: event.target.value })} />
                 </Field>
               ))}
-              {selectedModule.inputs.map((input) => (
+              {selectedModule.inputs.filter((input) => input.exposed !== false).map((input) => (
                 <Field key={input.key}>
                   <FieldLabel>{input.label}</FieldLabel>
                   <Input value={previewInputs[input.key] || ""} onChange={(event) => setPreviewInputs({ ...previewInputs, [input.key]: event.target.value })} />

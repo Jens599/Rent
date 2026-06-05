@@ -64,6 +64,7 @@ export default defineSchema({
         label: v.string(),
         type: v.string(),
         required: v.boolean(),
+        exposed: v.optional(v.boolean()),
         defaultValue: v.optional(v.any()),
         helpText: v.optional(v.string()),
         options: v.optional(v.array(v.string())),

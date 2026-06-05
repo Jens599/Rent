@@ -170,6 +170,7 @@ export default function InvoicePage() {
       label: string;
       type?: string;
       required: boolean;
+      exposed?: boolean;
       helpText?: string;
       options?: string[];
       defaultValue?: number | string | boolean;
@@ -181,6 +182,7 @@ export default function InvoicePage() {
           label: input.label,
           type: input.type,
           required: input.required,
+          exposed: input.exposed,
           helpText: input.helpText,
           options: input.options,
           defaultValue: input.defaultValue,
@@ -188,7 +190,9 @@ export default function InvoicePage() {
       }
     }
     return [...uniqueInputs.values()].filter(
-      (input) => !["previousMonthReading", "currentMonthReading", "electricityRate"].includes(input.key),
+      (input) =>
+        input.exposed !== false &&
+        !["previousMonthReading", "currentMonthReading", "electricityRate"].includes(input.key),
     );
   }, [modules]);
 
