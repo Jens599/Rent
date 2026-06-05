@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { logger } from "@/lib/logger";
+import { runCalculationModules } from "@/lib/calculations/evaluator";
+import type { CalculationModuleConfig } from "@/lib/calculations/types";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -61,6 +63,43 @@ export async function POST(request: NextRequest) {
         { error: "User ID is required" },
         { status: 400 },
       );
+    }
+
+    if (invoiceData.calculationInputs) {
+      let modules = await convex.query(api.tasks.getCalculationModules, {
+        userId: invoiceData.userId as any,
+      });
+
+      if (modules.length === 0) {
+        await convex.mutation(api.tasks.seedDefaultCalculationModules, {
+          userId: invoiceData.userId as any,
+        });
+        modules = await convex.query(api.tasks.getCalculationModules, {
+          userId: invoiceData.userId as any,
+        });
+      }
+
+      const calculation = runCalculationModules(
+        modules as CalculationModuleConfig[],
+        invoiceData.calculationInputs,
+      );
+
+      if (calculation.errors.length > 0) {
+        return NextResponse.json(
+          { errors: calculation.errors },
+          { status: 400 },
+        );
+      }
+
+      const getResultValue = (key: string) =>
+        calculation.results.find((result) => result.outputKey === key)?.value ?? 0;
+
+      invoiceData.baseRent = getResultValue("baseRent") || invoiceData.baseRent;
+      invoiceData.unitsConsumed = getResultValue("electricityUnits") || 0;
+      invoiceData.electricityCost = getResultValue("electricityCost") || 0;
+      invoiceData.total = calculation.total;
+      invoiceData.calculationBreakdown = calculation.results;
+      delete invoiceData.calculationInputs;
     }
 
     const newInvoice = await convex.mutation(

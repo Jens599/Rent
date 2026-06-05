@@ -29,6 +29,69 @@ export default defineSchema({
     electricityRate: v.optional(v.number()),
     electricityCost: v.number(),
     total: v.number(),
+    calculationBreakdown: v.optional(
+      v.array(
+        v.object({
+          moduleId: v.string(),
+          moduleName: v.string(),
+          outputKey: v.string(),
+          outputLabel: v.string(),
+          outputFormat: v.string(),
+          value: v.number(),
+          formula: v.string(),
+          inputs: v.any(),
+          dependencies: v.array(
+            v.object({
+              moduleId: v.string(),
+              outputKey: v.string(),
+            }),
+          ),
+        }),
+      ),
+    ),
+  }).index("by_userId", ["userId"]),
+
+  calculationModules: defineTable({
+    userId: v.id("users"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    enabled: v.boolean(),
+    order: v.number(),
+    category: v.string(),
+    inputs: v.array(
+      v.object({
+        key: v.string(),
+        label: v.string(),
+        type: v.string(),
+        required: v.boolean(),
+        defaultValue: v.optional(v.any()),
+        helpText: v.optional(v.string()),
+        options: v.optional(v.array(v.string())),
+      }),
+    ),
+    formula: v.string(),
+    output: v.object({
+      key: v.string(),
+      label: v.string(),
+      format: v.string(),
+    }),
+    dependencies: v.array(
+      v.object({
+        moduleId: v.string(),
+        outputKey: v.string(),
+      }),
+    ),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  }).index("by_userId", ["userId"]),
+
+  calculationModulePresets: defineTable({
+    userId: v.id("users"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    modules: v.any(),
+    createdAt: v.string(),
+    updatedAt: v.string(),
   }).index("by_userId", ["userId"]),
 
   settings: defineTable({

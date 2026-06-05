@@ -12,6 +12,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Field,
   FieldGroup,
   FieldLabel,
@@ -23,11 +30,11 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { InvoiceDisplay } from "@/components/invoice-display";
 import type { Tenant, Invoice } from "@/lib/types";
+import type { CalculationModuleConfig } from "@/lib/calculations/types";
+import { runCalculationModules } from "@/lib/calculations/evaluator";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-
-const DEFAULT_ELECTRICITY_RATE = 15; // Default Rs. 15 per unit
 
 export default function InvoicePage() {
   const { data: session } = useSession();
@@ -43,7 +50,8 @@ export default function InvoicePage() {
     React.useState<string>("");
   const [currentMonthReading, setCurrentMonthReading] =
     React.useState<string>("");
-  const [electricityRate, setElectricityRate] = React.useState<number>(15);
+  const [modules, setModules] = React.useState<CalculationModuleConfig[]>([]);
+  const [moduleInputs, setModuleInputs] = React.useState<Record<string, string>>({});
   const [generatedInvoice, setGeneratedInvoice] =
     React.useState<Invoice | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -54,7 +62,7 @@ export default function InvoicePage() {
     // Initialize invoice date time
     setInvoiceDateTime(new Date());
     loadTenants();
-    loadSettings();
+    loadModules();
   }, []);
 
   // Load tenant data and previous invoice when tenant is selected
@@ -62,6 +70,10 @@ export default function InvoicePage() {
     if (selectedTenant) {
       // Auto-populate base rent
       setBaseRent(selectedTenant.baseRent.toString());
+      setModuleInputs((current) => ({
+        ...current,
+        tenantBaseRent: selectedTenant.baseRent.toString(),
+      }));
 
       // Load last invoice to get previous month reading
       loadLastInvoice(selectedTenant._id);
@@ -70,6 +82,7 @@ export default function InvoicePage() {
       setBaseRent("");
       setPreviousMonthReading("");
       setCurrentMonthReading("");
+      setModuleInputs({});
     }
   }, [selectedTenant]);
 
@@ -80,20 +93,27 @@ export default function InvoicePage() {
     }
   }, []);
 
-  const loadSettings = async () => {
-    if (!session?.user?.id) {
-      toast.error("User not authenticated");
-      return;
-    }
-
+  const loadModules = async () => {
     try {
-      const response = await fetch(`/api/settings?userId=${session.user.id}`);
+      const response = await fetch("/api/calculation-modules");
       if (response.ok) {
         const data = await response.json();
-        setElectricityRate(data.electricityRate);
+        setModules(data);
+        const electricityModule = data.find(
+          (item: CalculationModuleConfig) => item.output.key === "electricityCost",
+        );
+        const electricityRateInput = electricityModule?.inputs.find(
+          (input: { key: string }) => input.key === "electricityRate",
+        );
+        if (electricityRateInput?.defaultValue !== undefined) {
+          setModuleInputs((current) => ({
+            ...current,
+            electricityRate: String(electricityRateInput.defaultValue),
+          }));
+        }
       }
     } catch (error) {
-      console.error("Error loading settings:", error);
+      console.error("Error loading calculation modules:", error);
     }
   };
 
@@ -129,9 +149,14 @@ export default function InvoicePage() {
           const lastInvoice = invoices[0];
           // Auto-populate previous month reading from last invoice's current reading
           setPreviousMonthReading(lastInvoice.currentMonthReading.toString());
+          setModuleInputs((current) => ({
+            ...current,
+            previousMonthReading: lastInvoice.currentMonthReading.toString(),
+          }));
         } else {
           // No previous invoice, clear field
           setPreviousMonthReading("");
+          setModuleInputs((current) => ({ ...current, previousMonthReading: "" }));
         }
       }
     } catch (error) {
@@ -139,21 +164,57 @@ export default function InvoicePage() {
     }
   };
 
-  // Calculate values
-  const unitsConsumed = React.useMemo(() => {
-    const prev = parseFloat(previousMonthReading) || 0;
-    const curr = parseFloat(currentMonthReading) || 0;
-    return Math.max(0, curr - prev);
-  }, [previousMonthReading, currentMonthReading]);
+  const allModuleInputs = React.useMemo(() => {
+    const uniqueInputs = new Map<string, {
+      key: string;
+      label: string;
+      type?: string;
+      required: boolean;
+      helpText?: string;
+      options?: string[];
+      defaultValue?: number | string | boolean;
+    }>();
+    for (const calculationModule of modules.filter((item) => item.enabled)) {
+      for (const input of calculationModule.inputs) {
+        uniqueInputs.set(input.key, {
+          key: input.key,
+          label: input.label,
+          type: input.type,
+          required: input.required,
+          helpText: input.helpText,
+          options: input.options,
+          defaultValue: input.defaultValue,
+        });
+      }
+    }
+    return [...uniqueInputs.values()].filter(
+      (input) => !["previousMonthReading", "currentMonthReading", "electricityRate"].includes(input.key),
+    );
+  }, [modules]);
 
-  const electricityCost = React.useMemo(() => {
-    return unitsConsumed * electricityRate;
-  }, [unitsConsumed, electricityRate]);
+  const calculationInputs = React.useMemo<Record<string, number | string | boolean>>(
+    () => ({
+      ...moduleInputs,
+      tenantBaseRent: selectedTenant?.baseRent ?? (parseFloat(baseRent) || 0),
+      previousMonthReading: previousMonthReading || 0,
+      currentMonthReading: currentMonthReading || 0,
+    }),
+    [moduleInputs, selectedTenant, baseRent, previousMonthReading, currentMonthReading],
+  );
 
-  const total = React.useMemo(() => {
-    const rent = parseFloat(baseRent) || 0;
-    return rent + electricityCost;
-  }, [baseRent, electricityCost]);
+  const calculation = React.useMemo(() => {
+    if (!selectedTenant || modules.length === 0) {
+      return { results: [], total: 0, errors: [] };
+    }
+    return runCalculationModules(modules, calculationInputs);
+  }, [selectedTenant, modules, calculationInputs]);
+
+  const getCalculatedValue = (key: string) =>
+    calculation.results.find((result) => result.outputKey === key)?.value ?? 0;
+
+  const unitsConsumed = getCalculatedValue("electricityUnits");
+  const electricityCost = getCalculatedValue("electricityCost");
+  const total = calculation.total;
 
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -203,7 +264,7 @@ export default function InvoicePage() {
     }
 
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return Object.keys(newErrors).length === 0 && calculation.errors.length === 0;
   };
 
   const handleGenerateInvoice = async () => {
@@ -231,9 +292,10 @@ export default function InvoicePage() {
         previousMonthReading: parseFloat(previousMonthReading) || 0,
         currentMonthReading: parseFloat(currentMonthReading),
         unitsConsumed,
-        electricityRate,
+        electricityRate: Number(calculationInputs.electricityRate || 0),
         electricityCost,
         total,
+        calculationInputs,
       };
 
       const response = await fetch("/api/invoices", {
@@ -260,6 +322,7 @@ export default function InvoicePage() {
   const handleReset = () => {
     setGeneratedInvoice(null);
     setCurrentMonthReading("");
+    setModuleInputs((current) => ({ ...current, currentMonthReading: "" }));
     // Keep tenant, date, base rent, and previous reading
   };
 
@@ -269,6 +332,7 @@ export default function InvoicePage() {
     setCurrentMonthReading("");
     setBaseRent("");
     setPreviousMonthReading("");
+    setModuleInputs({});
   };
 
   const handleTenantSelect = (tenant: Tenant) => {
@@ -443,6 +507,10 @@ export default function InvoicePage() {
                       value={previousMonthReading}
                       onChange={(e) => {
                         setPreviousMonthReading(e.target.value);
+                        setModuleInputs((current) => ({
+                          ...current,
+                          previousMonthReading: e.target.value,
+                        }));
                         if (errors.previousReading) {
                           setErrors((prev) => ({
                             ...prev,
@@ -477,6 +545,10 @@ export default function InvoicePage() {
                       value={currentMonthReading}
                       onChange={(e) => {
                         setCurrentMonthReading(e.target.value);
+                        setModuleInputs((current) => ({
+                          ...current,
+                          currentMonthReading: e.target.value,
+                        }));
                         if (errors.currentReading) {
                           setErrors((prev) => ({
                             ...prev,
@@ -495,6 +567,98 @@ export default function InvoicePage() {
                   </Field>
                 </div>
 
+                {allModuleInputs.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {allModuleInputs.map((input) => {
+                      const options = input.options || [];
+                      const placeholder = input.type === "select" || input.type === "radio"
+                        ? `Choose ${input.label.toLowerCase()}`
+                        : input.type === "checkbox"
+                          ? input.label
+                          : `Enter ${input.label.toLowerCase()}`;
+
+                      return (
+                        <Field key={input.key}>
+                          <FieldLabel htmlFor={input.key}>
+                            {input.label} {input.required ? "*" : ""}
+                          </FieldLabel>
+                          {input.type === "select" ? (
+                            <Select
+                              value={moduleInputs[input.key] || String(input.defaultValue ?? "")}
+                              onValueChange={(value) =>
+                                setModuleInputs((current) => ({ ...current, [input.key]: value }))
+                              }
+                            >
+                              <SelectTrigger id={input.key} className="w-full">
+                                <SelectValue placeholder={placeholder} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {options.map((option) => {
+                                  const value = option.includes(":") ? option.split(":")[0].trim() : option;
+                                  const label = option.includes(":") ? option.split(":").slice(1).join(":").trim() : option;
+                                  return <SelectItem key={option} value={value}>{label}</SelectItem>;
+                                })}
+                              </SelectContent>
+                            </Select>
+                          ) : input.type === "radio" ? (
+                            <div className="grid gap-2 rounded-none border p-3">
+                              {options.map((option) => {
+                                const value = option.includes(":") ? option.split(":")[0].trim() : option;
+                                const label = option.includes(":") ? option.split(":").slice(1).join(":").trim() : option;
+                                return (
+                                  <label key={option} className="flex items-center gap-2 text-sm">
+                                    <input
+                                      type="radio"
+                                      name={input.key}
+                                      value={value}
+                                      checked={(moduleInputs[input.key] || String(input.defaultValue ?? "")) === value}
+                                      onChange={(event) =>
+                                        setModuleInputs((current) => ({ ...current, [input.key]: event.target.value }))
+                                      }
+                                    />
+                                    {label}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          ) : input.type === "checkbox" ? (
+                            <label className="flex items-center gap-3 rounded-none border p-3 text-sm">
+                              <input
+                                id={input.key}
+                                type="checkbox"
+                                checked={(moduleInputs[input.key] || String(input.defaultValue ?? "0")) === "1"}
+                                onChange={(event) =>
+                                  setModuleInputs((current) => ({
+                                    ...current,
+                                    [input.key]: event.target.checked ? "1" : "0",
+                                  }))
+                                }
+                              />
+                              {placeholder}
+                            </label>
+                          ) : (
+                            <Input
+                              id={input.key}
+                              type={input.type === "text" ? "text" : "number"}
+                              step="0.01"
+                              value={moduleInputs[input.key] || String(input.defaultValue ?? "")}
+                              onChange={(e) =>
+                                setModuleInputs((current) => ({
+                                  ...current,
+                                  [input.key]: e.target.value,
+                                }))
+                              }
+                              required={input.required}
+                              placeholder={placeholder}
+                            />
+                          )}
+                          {input.helpText && <FieldDescription>{input.helpText}</FieldDescription>}
+                        </Field>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* Current Rate Display */}
                 <Card className="bg-muted/50">
                   <CardContent className="pt-4">
@@ -504,12 +668,12 @@ export default function InvoicePage() {
                           Current Electricity Rate
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          From settings. Change in Settings page if needed.
+                          From the Electricity Charge module input default.
                         </p>
                       </div>
                       <div className="text-right">
                         <p className="text-lg font-bold text-primary">
-                          Rs. {electricityRate.toFixed(2)}/unit
+                          Rs. {Number(calculationInputs.electricityRate || 0).toFixed(2)}/unit
                         </p>
                       </div>
                     </div>
@@ -521,23 +685,25 @@ export default function InvoicePage() {
                   <Card className="bg-muted/50">
                     <CardContent className="pt-4">
                       <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">
-                            Units Consumed:
-                          </span>
-                          <span className="font-medium">
-                            {unitsConsumed.toFixed(2)}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">
-                            Electricity Cost (Rs. {electricityRate.toFixed(2)}
-                            /unit):
-                          </span>
-                          <span className="font-medium">
-                            Rs. {electricityCost.toFixed(2)}
-                          </span>
-                        </div>
+                        {calculation.errors.length > 0 && (
+                          <div className="border border-destructive/50 bg-destructive/5 p-3 text-destructive space-y-1">
+                            {calculation.errors.map((error) => (
+                              <p key={error}>{error}</p>
+                            ))}
+                          </div>
+                        )}
+                        {calculation.results.map((result) => (
+                          <div key={result.moduleId} className="flex justify-between">
+                            <span className="text-muted-foreground">
+                              {result.outputLabel}:
+                            </span>
+                            <span className="font-medium">
+                              {result.outputFormat === "currency" ? "Rs. " : ""}
+                              {result.value.toFixed(2)}
+                              {result.outputFormat === "percent" ? "%" : ""}
+                            </span>
+                          </div>
+                        ))}
                         <div className="flex justify-between border-t pt-2">
                           <span className="font-medium">Total:</span>
                           <span className="font-bold text-lg">
@@ -561,6 +727,10 @@ export default function InvoicePage() {
                       setBaseRent(selectedTenant.baseRent.toString());
                       setPreviousMonthReading("");
                       setCurrentMonthReading("");
+                      setModuleInputs({
+                        tenantBaseRent: selectedTenant.baseRent.toString(),
+                        electricityRate: String(calculationInputs.electricityRate || 15),
+                      });
                     }}
                   >
                     Reset Form
