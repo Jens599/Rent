@@ -136,6 +136,7 @@ export default function ModulesPage() {
   const [draggedModuleIndex, setDraggedModuleIndex] = React.useState<number | null>(null);
   const [dropTarget, setDropTarget] = React.useState<{ index: number; position: "before" | "after" } | null>(null);
   const moduleRowRefs = React.useRef<Array<HTMLDivElement | null>>([]);
+  const activePointerId = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     loadModules();
@@ -407,9 +408,35 @@ export default function ModulesPage() {
         : dropTarget.index + 1;
       await reorderModules(draggedModuleIndex, targetIndex);
     }
+    activePointerId.current = null;
     setDraggedModuleIndex(null);
     setDropTarget(null);
   };
+
+  React.useEffect(() => {
+    if (draggedModuleIndex === null) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (activePointerId.current !== null && event.pointerId !== activePointerId.current) return;
+      event.preventDefault();
+      updateDropTargetFromPointer(event.clientY);
+    };
+
+    const handlePointerUp = async (event: PointerEvent) => {
+      if (activePointerId.current !== null && event.pointerId !== activePointerId.current) return;
+      await finishPointerReorder();
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+  }, [draggedModuleIndex, dropTarget]);
 
   const insertFormulaToken = (token: string) => {
     updateSelected({ formula: `${selectedModule.formula}${selectedModule.formula ? " " : ""}${token}` });
@@ -841,26 +868,13 @@ export default function ModulesPage() {
                   setDraggedModuleIndex(null);
                   setDropTarget(null);
                 }}
-                onPointerMove={(event) => {
-                  if (draggedModuleIndex === null || event.pointerType === "mouse") return;
-                  event.preventDefault();
-                  updateDropTargetFromPointer(event.clientY);
-                }}
-                onPointerUp={async (event) => {
-                  if (event.pointerType === "mouse") return;
-                  await finishPointerReorder();
-                }}
-                onPointerCancel={() => {
-                  setDraggedModuleIndex(null);
-                  setDropTarget(null);
-                }}
                 className={`group relative flex w-full items-center gap-2 border p-2 text-left transition-colors ${
                   selectedModule._id === calculationModule._id
                     ? "border-primary bg-primary text-primary-foreground shadow-sm"
                     : "bg-background/40 hover:bg-muted/60"
                 }`}
               >
-                {draggedModuleIndex !== null && dropTarget?.index === index && draggedModuleIndex !== index && (
+                {draggedModuleIndex !== null && dropTarget?.index === index && (
                   <div className={`absolute left-0 right-0 z-10 h-1.5 rounded-full bg-primary shadow-[0_0_0_3px_hsl(var(--background))] ${
                     dropTarget.position === "before" ? "-top-1" : "-bottom-1"
                   }`} />
@@ -871,7 +885,7 @@ export default function ModulesPage() {
                   className="touch-none p-1"
                   onPointerDown={(event) => {
                     if (event.pointerType === "mouse") return;
-                    event.currentTarget.setPointerCapture(event.pointerId);
+                    activePointerId.current = event.pointerId;
                     setDraggedModuleIndex(index);
                     updateDropTargetFromPointer(event.clientY);
                   }}
