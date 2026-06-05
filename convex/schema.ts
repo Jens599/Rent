@@ -97,6 +97,7 @@ export default defineSchema({
 
   settings: defineTable({
     electricityRate: v.number(),
+    moduleReorderMode: v.optional(v.string()),
     userId: v.id("users"),
   })
     .index("by_single", ["electricityRate"])

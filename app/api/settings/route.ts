@@ -8,6 +8,7 @@ const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 // Default settings
 const DEFAULT_SETTINGS = {
   electricityRate: 15, // Default Rs. 15 per unit
+  moduleReorderMode: "buttons",
 };
 
 // GET - Get current settings
@@ -51,6 +52,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const moduleReorderMode = settings.moduleReorderMode === "drag" ? "drag" : "buttons";
+
     // Validate settings
     if (
       typeof settings.electricityRate !== "number" ||
@@ -65,6 +68,7 @@ export async function POST(request: NextRequest) {
     const result = await convex.mutation(api.tasks.upsertSettings, {
       userId: settings.userId,
       electricityRate: settings.electricityRate,
+      moduleReorderMode,
     });
 
     return NextResponse.json({ success: true, settingsId: result });

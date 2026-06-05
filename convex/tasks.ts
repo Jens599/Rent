@@ -567,6 +567,7 @@ export const upsertSettings = mutation({
   args: {
     userId: v.id("users"),
     electricityRate: v.number(),
+    moduleReorderMode: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const existingSettings = await ctx.db
@@ -577,12 +578,14 @@ export const upsertSettings = mutation({
     if (existingSettings) {
       await ctx.db.patch(existingSettings._id, {
         electricityRate: args.electricityRate,
+        moduleReorderMode: args.moduleReorderMode,
       });
       return existingSettings._id;
     } else {
       const settingsId = await ctx.db.insert("settings", {
         userId: args.userId,
         electricityRate: args.electricityRate,
+        moduleReorderMode: args.moduleReorderMode,
       });
       return settingsId;
     }

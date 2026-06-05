@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { logger } from "@/lib/logger";
 import {
+  ArrowUpDownIcon,
+  GripVerticalIcon,
   SettingsIcon,
   TrashIcon,
   UsersIcon,
@@ -34,6 +36,62 @@ import { useSession } from "next-auth/react";
 export default function SettingsPage() {
   const { data: session } = useSession();
   const [deleteLoading, setDeleteLoading] = React.useState<string | null>(null);
+  const [settingsLoading, setSettingsLoading] = React.useState(true);
+  const [settingsSaving, setSettingsSaving] = React.useState(false);
+  const [moduleReorderMode, setModuleReorderMode] = React.useState<"drag" | "buttons">("buttons");
+
+  React.useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const loadSettings = async () => {
+      setSettingsLoading(true);
+      try {
+        const response = await fetch(`/api/settings?userId=${session.user.id}`);
+        if (!response.ok) throw new Error("Failed to load settings");
+        const data = await response.json();
+        setModuleReorderMode(data.moduleReorderMode === "drag" ? "drag" : "buttons");
+      } catch (error) {
+        toast.error("Failed to load preferences");
+      } finally {
+        setSettingsLoading(false);
+      }
+    };
+
+    loadSettings();
+  }, [session?.user?.id]);
+
+  const saveModuleReorderMode = async (mode: "drag" | "buttons") => {
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
+    const previousMode = moduleReorderMode;
+    setModuleReorderMode(mode);
+    setSettingsSaving(true);
+
+    try {
+      const currentResponse = await fetch(`/api/settings?userId=${session.user.id}`);
+      const currentSettings = currentResponse.ok ? await currentResponse.json() : { electricityRate: 15 };
+      const response = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: session.user.id,
+          electricityRate: currentSettings.electricityRate || 15,
+          moduleReorderMode: mode,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to save settings");
+      toast.success("Module reorder preference saved");
+    } catch (error) {
+      setModuleReorderMode(previousMode);
+      toast.error("Failed to save preference");
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
 
   const handleDeleteAllInvoices = async () => {
     if (!session?.user?.id) {
@@ -131,6 +189,58 @@ export default function SettingsPage() {
           Manage your application settings and preferences
         </p>
       </div>
+
+      <Card className="mb-6 overflow-hidden border-primary/15 bg-gradient-to-br from-background to-muted/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ArrowUpDownIcon className="h-5 w-5" />
+            Module Reordering
+          </CardTitle>
+          <CardDescription>
+            Choose how calculation modules are reordered in the module editor.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 rounded-2xl border bg-background/80 p-2 shadow-sm sm:grid-cols-2">
+            <button
+              type="button"
+              disabled={settingsLoading || settingsSaving}
+              onClick={() => saveModuleReorderMode("drag")}
+              className={`rounded-xl border p-4 text-left transition-all ${
+                moduleReorderMode === "drag"
+                  ? "border-primary bg-primary text-primary-foreground shadow-md"
+                  : "border-transparent hover:bg-muted/70"
+              }`}
+            >
+              <div className="mb-2 flex items-center gap-2 font-semibold">
+                <GripVerticalIcon className="h-4 w-4" />
+                Drag Handles
+              </div>
+              <p className={`text-sm ${moduleReorderMode === "drag" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                Sleek drag-and-drop ordering with touch support.
+              </p>
+            </button>
+            <button
+              type="button"
+              disabled={settingsLoading || settingsSaving}
+              onClick={() => saveModuleReorderMode("buttons")}
+              className={`rounded-xl border p-4 text-left transition-all ${
+                moduleReorderMode === "buttons"
+                  ? "border-primary bg-primary text-primary-foreground shadow-md"
+                  : "border-transparent hover:bg-muted/70"
+              }`}
+            >
+              <div className="mb-2 flex items-center gap-2 font-semibold">
+                <ArrowUpDownIcon className="h-4 w-4" />
+                Arrow Buttons
+              </div>
+              <p className={`text-sm ${moduleReorderMode === "buttons" ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                Precise up/down controls as a reliable backup.
+              </p>
+            </button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Data Management Card */}
       <Card className="border-destructive/20">
