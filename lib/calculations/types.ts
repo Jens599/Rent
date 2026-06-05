@@ -11,6 +11,7 @@ export interface CalculationModuleInput {
   label: string;
   type: CalculationInputType;
   required: boolean;
+  exposed?: boolean;
   defaultValue?: number | string | boolean;
   helpText?: string;
   options?: string[];

@@ -13,9 +13,22 @@ async function getUserId() {
 }
 
 function cleanModulesForPreset(modules: CalculationModuleConfig[]) {
+  const moduleByOutputKey = new Map(
+    modules.map((calculationModule) => [calculationModule.output.key, calculationModule]),
+  );
+
   return modules.map((calculationModule) => {
     const { _id, userId, createdAt, updatedAt, ...moduleData } = calculationModule;
-    return moduleData;
+    return {
+      ...moduleData,
+      dependencies: calculationModule.dependencies.map((dependency) => {
+        const dependencyModule = moduleByOutputKey.get(dependency.outputKey);
+        return {
+          moduleId: dependencyModule?.name || dependency.moduleId,
+          outputKey: dependency.outputKey,
+        };
+      }),
+    };
   });
 }
 
@@ -55,6 +68,37 @@ export async function POST(request: NextRequest) {
   const preset = await convex.mutation(api.tasks.createCalculationModulePreset, {
     userId: userId as any,
     name,
+    description: body.description ? String(body.description) : undefined,
+    modules: cleanModulesForPreset(modules as CalculationModuleConfig[]),
+  });
+
+  return NextResponse.json(preset);
+}
+
+export async function PUT(request: NextRequest) {
+  const userId = await getUserId();
+  if (!userId) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const presetId = body.presetId;
+  if (!presetId) {
+    return NextResponse.json({ error: "Preset ID is required" }, { status: 400 });
+  }
+
+  const modules = await convex.query(api.tasks.getCalculationModules, {
+    userId: userId as any,
+  });
+
+  if (modules.length === 0) {
+    return NextResponse.json({ error: "No modules available to save" }, { status: 400 });
+  }
+
+  const preset = await convex.mutation(api.tasks.updateCalculationModulePreset, {
+    presetId: presetId as any,
+    userId: userId as any,
+    name: body.name ? String(body.name) : undefined,
     description: body.description ? String(body.description) : undefined,
     modules: cleanModulesForPreset(modules as CalculationModuleConfig[]),
   });

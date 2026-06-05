@@ -306,6 +306,7 @@ const calculationModuleArgs = {
       label: v.string(),
       type: v.string(),
       required: v.boolean(),
+      exposed: v.optional(v.boolean()),
       defaultValue: v.optional(v.any()),
       helpText: v.optional(v.string()),
       options: v.optional(v.array(v.string())),
@@ -460,6 +461,30 @@ export const createCalculationModulePreset = mutation({
   },
 });
 
+export const updateCalculationModulePreset = mutation({
+  args: {
+    presetId: v.id("calculationModulePresets"),
+    userId: v.id("users"),
+    name: v.optional(v.string()),
+    description: v.optional(v.string()),
+    modules: v.optional(v.any()),
+  },
+  handler: async (ctx, args) => {
+    const preset = await ctx.db.get(args.presetId);
+    if (!preset || preset.userId !== args.userId) {
+      throw new Error("Preset not found");
+    }
+
+    const updates: any = { updatedAt: new Date().toISOString() };
+    if (args.name !== undefined) updates.name = args.name;
+    if (args.description !== undefined) updates.description = args.description;
+    if (args.modules !== undefined) updates.modules = args.modules;
+
+    await ctx.db.patch(args.presetId, updates);
+    return await ctx.db.get(args.presetId);
+  },
+});
+
 export const deleteCalculationModulePreset = mutation({
   args: { presetId: v.id("calculationModulePresets") },
   handler: async (ctx, args) => {
@@ -488,8 +513,13 @@ export const applyCalculationModulePreset = mutation({
       await ctx.db.delete(calculationModule._id);
     }
 
+    const savedModules = preset.modules as any[];
+    const moduleByOutputKey = new Map(
+      savedModules.map((savedModule) => [savedModule.output?.key, savedModule]),
+    );
+
     const now = new Date().toISOString();
-    for (const savedModule of preset.modules) {
+    for (const savedModule of savedModules) {
       const {
         _id,
         _creationTime,
@@ -499,8 +529,17 @@ export const applyCalculationModulePreset = mutation({
         ...moduleData
       } = savedModule;
 
+      const dependencies = (moduleData.dependencies || []).map((dependency: any) => {
+        const dependencyModule = moduleByOutputKey.get(dependency.outputKey);
+        return {
+          moduleId: dependencyModule?.name || dependency.moduleId,
+          outputKey: dependency.outputKey,
+        };
+      });
+
       await ctx.db.insert("calculationModules", {
         ...moduleData,
+        dependencies,
         userId: args.userId,
         createdAt: now,
         updatedAt: now,
