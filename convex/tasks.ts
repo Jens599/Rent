@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { logger } from "../lib/logger";
+import { createDefaultCalculationModules } from "../lib/calculations/default-modules";
 
 // User operations
 export const createUser = mutation({
@@ -103,6 +104,7 @@ export const createInvoice = mutation({
     electricityRate: v.optional(v.number()),
     electricityCost: v.number(),
     total: v.number(),
+    calculationBreakdown: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const invoiceId = await ctx.db.insert("invoices", args);
@@ -287,6 +289,226 @@ export const deleteInvoice = mutation({
   handler: async (ctx, args) => {
     await ctx.db.delete(args.invoiceId);
     return args.invoiceId;
+  },
+});
+
+// Calculation module operations
+const calculationModuleArgs = {
+  userId: v.id("users"),
+  name: v.string(),
+  description: v.optional(v.string()),
+  enabled: v.boolean(),
+  order: v.number(),
+  category: v.string(),
+  inputs: v.array(
+    v.object({
+      key: v.string(),
+      label: v.string(),
+      type: v.string(),
+      required: v.boolean(),
+      defaultValue: v.optional(v.any()),
+      helpText: v.optional(v.string()),
+      options: v.optional(v.array(v.string())),
+    }),
+  ),
+  formula: v.string(),
+  output: v.object({
+    key: v.string(),
+    label: v.string(),
+    format: v.string(),
+  }),
+  dependencies: v.array(
+    v.object({
+      moduleId: v.string(),
+      outputKey: v.string(),
+    }),
+  ),
+};
+
+export const getCalculationModules = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const modules = await ctx.db
+      .query("calculationModules")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+    return modules.sort((a, b) => a.order - b.order);
+  },
+});
+
+export const seedDefaultCalculationModules = mutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const existingModules = await ctx.db
+      .query("calculationModules")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    if (existingModules.length > 0) {
+      return existingModules.length;
+    }
+
+    const now = new Date().toISOString();
+    for (const calculationModule of createDefaultCalculationModules()) {
+      await ctx.db.insert("calculationModules", {
+        ...calculationModule,
+        userId: args.userId,
+        description: calculationModule.description,
+        category: calculationModule.category,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return createDefaultCalculationModules().length;
+  },
+});
+
+export const resetCalculationModules = mutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const existingModules = await ctx.db
+      .query("calculationModules")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    for (const calculationModule of existingModules) {
+      await ctx.db.delete(calculationModule._id);
+    }
+
+    const now = new Date().toISOString();
+    for (const calculationModule of createDefaultCalculationModules()) {
+      await ctx.db.insert("calculationModules", {
+        ...calculationModule,
+        userId: args.userId,
+        description: calculationModule.description,
+        category: calculationModule.category,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return createDefaultCalculationModules().length;
+  },
+});
+
+export const createCalculationModule = mutation({
+  args: calculationModuleArgs,
+  handler: async (ctx, args) => {
+    const now = new Date().toISOString();
+    const moduleId = await ctx.db.insert("calculationModules", {
+      ...args,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return await ctx.db.get(moduleId);
+  },
+});
+
+export const updateCalculationModule = mutation({
+  args: {
+    moduleId: v.id("calculationModules"),
+    ...calculationModuleArgs,
+  },
+  handler: async (ctx, args) => {
+    const { moduleId, ...updates } = args;
+    await ctx.db.patch(moduleId, {
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    });
+    return await ctx.db.get(moduleId);
+  },
+});
+
+export const deleteCalculationModule = mutation({
+  args: { moduleId: v.id("calculationModules") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.moduleId);
+    return args.moduleId;
+  },
+});
+
+// Calculation module preset operations
+export const getCalculationModulePresets = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const presets = await ctx.db
+      .query("calculationModulePresets")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+    return presets.sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+    );
+  },
+});
+
+export const createCalculationModulePreset = mutation({
+  args: {
+    userId: v.id("users"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    modules: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const now = new Date().toISOString();
+    const presetId = await ctx.db.insert("calculationModulePresets", {
+      ...args,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return await ctx.db.get(presetId);
+  },
+});
+
+export const deleteCalculationModulePreset = mutation({
+  args: { presetId: v.id("calculationModulePresets") },
+  handler: async (ctx, args) => {
+    await ctx.db.delete(args.presetId);
+    return args.presetId;
+  },
+});
+
+export const applyCalculationModulePreset = mutation({
+  args: {
+    userId: v.id("users"),
+    presetId: v.id("calculationModulePresets"),
+  },
+  handler: async (ctx, args) => {
+    const preset = await ctx.db.get(args.presetId);
+    if (!preset || preset.userId !== args.userId) {
+      throw new Error("Preset not found");
+    }
+
+    const existingModules = await ctx.db
+      .query("calculationModules")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    for (const calculationModule of existingModules) {
+      await ctx.db.delete(calculationModule._id);
+    }
+
+    const now = new Date().toISOString();
+    for (const savedModule of preset.modules) {
+      const {
+        _id,
+        _creationTime,
+        userId,
+        createdAt,
+        updatedAt,
+        ...moduleData
+      } = savedModule;
+
+      await ctx.db.insert("calculationModules", {
+        ...moduleData,
+        userId: args.userId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    await ctx.db.patch(args.presetId, { updatedAt: now });
+    return preset.modules.length;
   },
 });
 

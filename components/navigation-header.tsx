@@ -13,6 +13,7 @@ import {
   FileTextIcon,
   HistoryIcon,
   SettingsIcon,
+  CalculatorIcon,
   LogOutIcon,
   UserIcon,
   MenuIcon,
@@ -142,6 +143,19 @@ export function NavigationHeader() {
                 <div className="flex items-center gap-2">
                   <SafeIcon icon={SettingsIcon} className="size-4" />
                   <span>Settings</span>
+                </div>
+              </Link>
+              <Link
+                href="/modules"
+                className={`transition-all duration-200 hover:text-foreground hover:bg-accent hover:scale-105 px-3 py-2 rounded-md ${
+                  isActive("/modules")
+                    ? "text-foreground bg-accent"
+                    : "text-foreground/60"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <SafeIcon icon={CalculatorIcon} className="size-4" />
+                  <span>Modules</span>
                 </div>
               </Link>
             </nav>
@@ -299,6 +313,18 @@ export function NavigationHeader() {
               <SafeIcon icon={SettingsIcon} className="size-5" />
               <span className="text-xs leading-tight">Settings</span>
             </Link>
+            <Link
+              href="/modules"
+              onClick={handleMobileLinkClick}
+              className={`flex flex-col items-center gap-1 transition-all duration-200 hover:text-foreground hover:bg-accent px-4 py-2 rounded-md min-w-0 flex-1 ${
+                isActive("/modules")
+                  ? "text-foreground bg-accent"
+                  : "text-foreground/60"
+              }`}
+            >
+              <SafeIcon icon={CalculatorIcon} className="size-5" />
+              <span className="text-xs leading-tight">Modules</span>
+            </Link>
           </nav>
         </div>
       </div>
@@ -367,6 +393,18 @@ export function NavigationHeader() {
               >
                 <SafeIcon icon={SettingsIcon} className="size-4" />
                 <span>Settings</span>
+              </Link>
+              <Link
+                href="/modules"
+                onClick={handleMobileLinkClick}
+                className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                  isActive("/modules")
+                    ? "text-foreground bg-accent"
+                    : "text-foreground/60 hover:text-foreground hover:bg-accent"
+                }`}
+              >
+                <SafeIcon icon={CalculatorIcon} className="size-4" />
+                <span>Modules</span>
               </Link>
             </div>
 

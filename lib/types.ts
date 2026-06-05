@@ -20,6 +20,19 @@ export interface Invoice {
   electricityRate?: number;
   electricityCost: number;
   total: number;
+  calculationBreakdown?: CalculationBreakdownItem[];
+}
+
+export interface CalculationBreakdownItem {
+  moduleId: string;
+  moduleName: string;
+  outputKey: string;
+  outputLabel: string;
+  outputFormat: string;
+  value: number;
+  formula: string;
+  inputs: Record<string, number | string | boolean>;
+  dependencies: Array<{ moduleId: string; outputKey: string }>;
 }
 
 export interface Settings {

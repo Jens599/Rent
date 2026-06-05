@@ -4,7 +4,8 @@ import { getLastInvoiceForTenant } from "../route";
 // GET - Get last invoice for a tenant
 export async function GET(request: NextRequest) {
   try {
-    const tenantId = request.nextUrl.searchParams.get("tenantId");
+    const { searchParams } = new URL(request.url);
+    const tenantId = searchParams.get("tenantId");
 
     if (!tenantId) {
       return NextResponse.json(
@@ -17,6 +18,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(lastInvoice);
   } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "digest" in error &&
+      String(error.digest).startsWith("NEXT_PRERENDER")
+    ) {
+      throw error;
+    }
+
     console.error("Error getting last invoice:", error);
     return NextResponse.json(
       { error: "Failed to get last invoice" },

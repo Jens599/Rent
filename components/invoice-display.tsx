@@ -9,6 +9,18 @@ interface InvoiceDisplayProps {
 }
 
 export function InvoiceDisplay({ invoice }: InvoiceDisplayProps) {
+  const hasBreakdown = invoice.calculationBreakdown && invoice.calculationBreakdown.length > 0;
+  const formatBreakdownValue = (value: number, format: string) => {
+    if (format === "currency") {
+      return `Rs. ${value.toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    }
+    if (format === "percent") return `${value.toFixed(2)}%`;
+    return value.toFixed(2);
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-background p-8 print:p-4">
@@ -43,51 +55,79 @@ export function InvoiceDisplay({ invoice }: InvoiceDisplayProps) {
 
             <Separator />
 
-            {/* Charges Section */}
             <div>
-              <h3 className="font-semibold mb-4 text-lg">Charges</h3>
-              <div className="space-y-6">
-                {/* Base Rent */}
-                <div className="flex justify-between items-start">
-                  <div className="pr-4">
-                    <p className="font-medium">Base Rent</p>
-                    <p className="text-sm text-muted-foreground">
-                      (includes utilities)
+              <h3 className="font-semibold mb-4 text-lg">
+                Calculation Summary
+              </h3>
+              {hasBreakdown ? (
+                <div className="space-y-4">
+                  {invoice.calculationBreakdown!.map((item) => (
+                    <div
+                      key={`${item.moduleId}-${item.outputKey}`}
+                      className="flex justify-between items-start border-b pb-3 last:border-b-0"
+                    >
+                      <div className="pr-4">
+                        <p className="font-medium">{item.outputLabel}</p>
+                        <p className="text-sm text-muted-foreground leading-normal">
+                          Formula: {item.formula}
+                        </p>
+                        {Object.keys(item.inputs || {}).length > 0 && (
+                          <p className="text-sm text-muted-foreground leading-normal">
+                            Inputs:{" "}
+                            {Object.entries(item.inputs)
+                              .map(([key, value]) => `${key}: ${value}`)
+                              .join(", ")}
+                          </p>
+                        )}
+                      </div>
+                      <p className="font-semibold shrink-0">
+                        {formatBreakdownValue(item.value, item.outputFormat)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="flex justify-between items-start">
+                    <div className="pr-4">
+                      <p className="font-medium">Base Rent</p>
+                      <p className="text-sm text-muted-foreground">
+                        (includes utilities)
+                      </p>
+                    </div>
+                    <p className="font-semibold shrink-0">
+                      Rs.{" "}
+                      {invoice.baseRent.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </p>
                   </div>
-                  <p className="font-semibold shrink-0">
-                    Rs.{" "}
-                    {invoice.baseRent.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </p>
-                </div>
 
-                {/* Electricity */}
-                <div className="flex justify-between items-start">
-                  <div className="pr-4">
-                    <p className="font-medium leading-tight">Electricity</p>
-                    <p className="text-sm text-muted-foreground leading-normal">
-                      Previous: {invoice.previousMonthReading.toFixed(2)} units
-                    </p>
-                    <p className="text-sm text-muted-foreground leading-normal">
-                      Current: {invoice.currentMonthReading.toFixed(2)} units
-                    </p>
-                    <p className="text-sm text-muted-foreground leading-normal">
-                      Units Consumed: {invoice.unitsConsumed.toFixed(2)} × Rs.
-                      {(invoice.electricityRate || 15).toFixed(2)}/unit
+                  <div className="flex justify-between items-start">
+                    <div className="pr-4">
+                      <p className="font-medium leading-tight">Electricity</p>
+                      <p className="text-sm text-muted-foreground leading-normal">
+                        Previous: {invoice.previousMonthReading.toFixed(2)} units
+                      </p>
+                      <p className="text-sm text-muted-foreground leading-normal">
+                        Current: {invoice.currentMonthReading.toFixed(2)} units
+                      </p>
+                      <p className="text-sm text-muted-foreground leading-normal">
+                        Units Consumed: {invoice.unitsConsumed.toFixed(2)} x Rs.
+                        {(invoice.electricityRate || 15).toFixed(2)}/unit
+                      </p>
+                    </div>
+                    <p className="font-semibold shrink-0">
+                      Rs.{" "}
+                      {invoice.electricityCost.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </p>
                   </div>
-                  <p className="font-semibold shrink-0">
-                    Rs.{" "}
-                    {invoice.electricityCost.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </p>
                 </div>
-              </div>
+              )}
             </div>
 
             <Separator />
