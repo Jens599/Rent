@@ -48,7 +48,10 @@ import {
   SaveIcon,
   TrashIcon,
   TestTubeIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import type { CalculationModuleConfig, CalculationModuleInput } from "@/lib/calculations/types";
 
 interface CalculationModulePreset {
@@ -109,6 +112,7 @@ function formatValue(value: number, format: string) {
 }
 
 export default function ModulesPage() {
+  const { data: session } = useSession();
   const [modules, setModules] = React.useState<CalculationModuleConfig[]>([]);
   const [presets, setPresets] = React.useState<CalculationModulePreset[]>([]);
   const [selectedModule, setSelectedModule] = React.useState<CalculationModuleConfig>(emptyModule);
@@ -135,6 +139,7 @@ export default function ModulesPage() {
   const [preview, setPreview] = React.useState<any>(null);
   const [draggedModuleIndex, setDraggedModuleIndex] = React.useState<number | null>(null);
   const [dropTarget, setDropTarget] = React.useState<{ index: number; position: "before" | "after" } | null>(null);
+  const [moduleReorderMode, setModuleReorderMode] = React.useState<"drag" | "buttons">("buttons");
   const moduleRowRefs = React.useRef<Array<HTMLDivElement | null>>([]);
   const activePointerId = React.useRef<number | null>(null);
 
@@ -142,6 +147,23 @@ export default function ModulesPage() {
     loadModules();
     loadPresets();
   }, []);
+
+  React.useEffect(() => {
+    if (!session?.user?.id) return;
+
+    const loadSettings = async () => {
+      try {
+        const response = await fetch(`/api/settings?userId=${session.user.id}`);
+        if (!response.ok) return;
+        const data = await response.json();
+        setModuleReorderMode(data.moduleReorderMode === "drag" ? "drag" : "buttons");
+      } catch (error) {
+        setModuleReorderMode("buttons");
+      }
+    };
+
+    loadSettings();
+  }, [session?.user?.id]);
 
   const loadModules = async () => {
     setLoading(true);
@@ -355,7 +377,7 @@ export default function ModulesPage() {
   };
 
   const reorderModules = async (fromIndex: number, targetIndex: number) => {
-    if (fromIndex === targetIndex || fromIndex + 1 === targetIndex) return;
+    if (fromIndex === targetIndex) return;
 
     const reordered = [...modules];
     const [movedModule] = reordered.splice(fromIndex, 1);
@@ -841,12 +863,14 @@ export default function ModulesPage() {
                 ref={(element) => {
                   moduleRowRefs.current[index] = element;
                 }}
-                draggable
+                draggable={moduleReorderMode === "drag"}
                 onDragStart={(event) => {
+                  if (moduleReorderMode !== "drag") return;
                   setDraggedModuleIndex(index);
                   event.dataTransfer.effectAllowed = "move";
                 }}
                 onDragOver={(event) => {
+                  if (moduleReorderMode !== "drag") return;
                   event.preventDefault();
                   const rect = event.currentTarget.getBoundingClientRect();
                   const offset = event.clientY - rect.top;
@@ -854,6 +878,7 @@ export default function ModulesPage() {
                   setDropTarget({ index, position });
                 }}
                 onDrop={async (event) => {
+                  if (moduleReorderMode !== "drag") return;
                   event.preventDefault();
                   if (draggedModuleIndex !== null && dropTarget) {
                     const targetIndex = dropTarget.position === "before"
@@ -879,21 +904,53 @@ export default function ModulesPage() {
                     dropTarget.position === "before" ? "-top-1" : "-bottom-1"
                   }`} />
                 )}
-                <button
-                  type="button"
-                  aria-label="Drag to reorder module"
-                  className="touch-none p-1"
-                  onPointerDown={(event) => {
-                    if (event.pointerType === "mouse") return;
-                    activePointerId.current = event.pointerId;
-                    setDraggedModuleIndex(index);
-                    updateDropTargetFromPointer(event.clientY);
-                  }}
-                >
-                  <GripVerticalIcon className={`h-4 w-4 shrink-0 cursor-grab ${
-                    selectedModule._id === calculationModule._id ? "text-primary-foreground/80" : "text-muted-foreground"
-                  }`} />
-                </button>
+                {moduleReorderMode === "drag" ? (
+                  <button
+                    type="button"
+                    aria-label="Drag to reorder module"
+                    className="touch-none p-1"
+                    onPointerDown={(event) => {
+                      if (event.pointerType === "mouse") return;
+                      activePointerId.current = event.pointerId;
+                      setDraggedModuleIndex(index);
+                      updateDropTargetFromPointer(event.clientY);
+                    }}
+                  >
+                    <GripVerticalIcon className={`h-4 w-4 shrink-0 cursor-grab ${
+                      selectedModule._id === calculationModule._id ? "text-primary-foreground/80" : "text-muted-foreground"
+                    }`} />
+                  </button>
+                ) : (
+                  <div className="flex shrink-0 flex-col overflow-hidden rounded-full border bg-background/70 shadow-sm">
+                    <button
+                      type="button"
+                      aria-label={`Move ${calculationModule.name} up`}
+                      disabled={index === 0}
+                      onClick={() => reorderModules(index, index - 1)}
+                      className={`grid h-7 w-8 place-items-center transition-colors ${
+                        selectedModule._id === calculationModule._id
+                          ? "text-primary hover:bg-primary-foreground disabled:text-primary/30"
+                          : "text-muted-foreground hover:bg-muted disabled:text-muted-foreground/30"
+                      }`}
+                    >
+                      <ChevronUpIcon className="h-4 w-4" />
+                    </button>
+                    <div className="h-px bg-border" />
+                    <button
+                      type="button"
+                      aria-label={`Move ${calculationModule.name} down`}
+                      disabled={index === modules.length - 1}
+                      onClick={() => reorderModules(index, index + 2)}
+                      className={`grid h-7 w-8 place-items-center transition-colors ${
+                        selectedModule._id === calculationModule._id
+                          ? "text-primary hover:bg-primary-foreground disabled:text-primary/30"
+                          : "text-muted-foreground hover:bg-muted disabled:text-muted-foreground/30"
+                      }`}
+                    >
+                      <ChevronDownIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={() => setSelectedModule(calculationModule)}

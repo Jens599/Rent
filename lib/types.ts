@@ -37,6 +37,7 @@ export interface CalculationBreakdownItem {
 
 export interface Settings {
   electricityRate: number;
+  moduleReorderMode?: "drag" | "buttons";
 }
 
 import { DefaultSession } from "next-auth";
