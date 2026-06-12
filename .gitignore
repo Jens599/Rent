@@ -44,3 +44,6 @@ next-env.d.ts
 # PWA build artifacts
 /public/serwist/
 /.swc/
+
+# Convex generated files
+/convex/_generated/
