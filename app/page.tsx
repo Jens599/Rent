@@ -262,10 +262,10 @@ export default function Page() {
           })}
         </div>
 
-        <Card className="mt-4 bg-foreground text-background">
+        <Card className="mt-4 border-primary/20 bg-primary/5">
           <CardContent className="grid gap-6 p-6 md:grid-cols-[1fr_auto] md:items-center">
             <div>
-              <div className="mb-3 flex items-center gap-2 text-sm text-background/70">
+              <div className="mb-3 flex items-center gap-2 text-sm text-muted-foreground">
                 <ClockIcon className="size-4" />
                 Optimized for repeat monthly work
               </div>
@@ -274,7 +274,7 @@ export default function Page() {
                 invoice.
               </h3>
             </div>
-            <Button asChild variant="secondary" size="lg" className="md:w-44">
+            <Button asChild size="lg" className="md:w-44">
               <Link href="/invoices">View history</Link>
             </Button>
           </CardContent>
