@@ -45,8 +45,5 @@ next-env.d.ts
 /public/serwist/
 /.swc/
 
-# Convex generated files
-/convex/_generated/
-
 # Local import test data
 /dummy-history-import.json
