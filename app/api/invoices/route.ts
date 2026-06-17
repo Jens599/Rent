@@ -79,15 +79,18 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      const requestedModules = Array.isArray(invoiceData.calculationModules)
+        ? (invoiceData.calculationModules as CalculationModuleConfig[])
+        : (modules as CalculationModuleConfig[]);
       const selectedModuleIds = Array.isArray(invoiceData.calculationModuleIds)
         ? new Set(invoiceData.calculationModuleIds)
         : null;
       const moduleList = selectedModuleIds
-        ? (modules as CalculationModuleConfig[]).filter(
+        ? requestedModules.filter(
             (item) =>
               selectedModuleIds.has(item._id) || selectedModuleIds.has(item.name),
           )
-        : (modules as CalculationModuleConfig[]);
+        : requestedModules;
       const calculation = runCalculationModules(
         moduleList,
         invoiceData.calculationInputs,
@@ -110,6 +113,7 @@ export async function POST(request: NextRequest) {
       invoiceData.calculationBreakdown = calculation.results;
       delete invoiceData.calculationInputs;
       delete invoiceData.calculationModuleIds;
+      delete invoiceData.calculationModules;
     }
 
     const newInvoice = await convex.mutation(
