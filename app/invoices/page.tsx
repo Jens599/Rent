@@ -510,7 +510,7 @@ export default function InvoiceHistoryPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-6 max-w-6xl">
+      <div className="container mx-auto max-w-6xl p-4 sm:p-6">
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
@@ -523,11 +523,11 @@ export default function InvoiceHistoryPage() {
 
   return (
     <TooltipProvider delayDuration={500}>
-      <div className="container mx-auto p-6 max-w-6xl">
+      <div className="container mx-auto max-w-6xl p-4 sm:p-6">
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <FileTextIcon />
+        <div className="min-w-0">
+          <h1 className="flex items-center gap-2 text-xl font-bold sm:text-2xl">
+            <FileTextIcon className="shrink-0" />
             Invoice History
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
@@ -543,6 +543,7 @@ export default function InvoiceHistoryPage() {
                     type="button"
                     variant="outline"
                     disabled={invoices.length === 0 || importing}
+                    className="w-full sm:w-auto"
                   >
                     <DownloadIcon className="h-4 w-4" />
                     Export
@@ -573,6 +574,7 @@ export default function InvoiceHistoryPage() {
                 type="button"
                 onClick={() => importInputRef.current?.click()}
                 disabled={importing}
+                className="w-full sm:w-auto"
               >
                 <UploadIcon className="h-4 w-4" />
                 {importing ? "Importing..." : "Import History"}
@@ -741,18 +743,23 @@ export default function InvoiceHistoryPage() {
                   className="cursor-pointer"
                   onClick={() => setSelectedInvoice(invoice)}
                 >
-                  <CardContent className="pt-6">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-lg">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <h3 className="min-w-0 break-words text-base font-semibold sm:text-lg">
                             {invoice.tenantName}
                           </h3>
-                          <Badge variant="secondary">ID: {invoice._id}</Badge>
+                          <Badge
+                            variant="secondary"
+                            className="max-w-full shrink truncate"
+                          >
+                            ID: {invoice._id}
+                          </Badge>
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <CalendarIcon className="h-4 w-4" />
+                        <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:gap-4">
+                          <div className="flex min-w-0 items-center gap-1">
+                            <CalendarIcon className="h-4 w-4 shrink-0" />
                             {new Date(invoice.date).toLocaleDateString(
                               "en-IN",
                               {
@@ -762,22 +769,22 @@ export default function InvoiceHistoryPage() {
                               },
                             )}
                           </div>
-                          <div className="flex items-center gap-1">
-                            <span>
+                          <div className="flex min-w-0 items-center gap-1">
+                            <span className="break-words">
                               Units: {invoice.unitsConsumed.toFixed(2)}
                             </span>
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-bold text-primary">
+                      <div className="w-full text-left sm:w-auto sm:text-right">
+                        <p className="break-words text-xl font-bold text-primary sm:text-2xl">
                           Rs.{" "}
                           {invoice.total.toLocaleString("en-IN", {
                             minimumFractionDigits: 2,
                             maximumFractionDigits: 2,
                           })}
                         </p>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="break-words text-xs text-muted-foreground sm:text-sm">
                           Rent: Rs. {invoice.baseRent.toLocaleString()} +
                           Electricity: Rs.{" "}
                           {invoice.electricityCost.toLocaleString()}
