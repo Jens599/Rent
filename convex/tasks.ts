@@ -285,8 +285,21 @@ export const getInvoicesByTenant = query({
 });
 
 export const deleteInvoice = mutation({
-  args: { invoiceId: v.id("invoices") },
+  args: {
+    invoiceId: v.id("invoices"),
+    userId: v.id("users"),
+  },
   handler: async (ctx, args) => {
+    const invoice = await ctx.db.get(args.invoiceId);
+
+    if (!invoice) {
+      throw new Error("Invoice not found");
+    }
+
+    if (invoice.userId !== args.userId) {
+      throw new Error("Invoice does not belong to this user");
+    }
+
     await ctx.db.delete(args.invoiceId);
     return args.invoiceId;
   },

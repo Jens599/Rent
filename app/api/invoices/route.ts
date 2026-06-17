@@ -121,6 +121,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const invoiceId = searchParams.get("id");
+  const userId = searchParams.get("userId");
 
   try {
     if (!invoiceId) {
@@ -130,13 +131,24 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    if (!userId) {
+      return NextResponse.json(
+        { error: "User ID is required" },
+        { status: 400 },
+      );
+    }
+
     await convex.mutation(api.tasks.deleteInvoice, {
       invoiceId: invoiceId as any,
+      userId: userId as any,
     });
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    logger.error("api_invoices_delete_failed", error as Error, { invoiceId });
+    logger.error("api_invoices_delete_failed", error as Error, {
+      invoiceId,
+      userId,
+    });
     return NextResponse.json(
       { error: "Failed to delete invoice" },
       { status: 500 },
