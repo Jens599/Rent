@@ -29,7 +29,7 @@ import { useSession } from "next-auth/react";
 import type { Tenant } from "@/lib/types";
 
 export default function TenantsPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [tenants, setTenants] = React.useState<Tenant[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [editingTenant, setEditingTenant] = React.useState<Tenant | null>(null);
@@ -42,12 +42,16 @@ export default function TenantsPage() {
 
   // Load tenants
   React.useEffect(() => {
-    loadTenants();
-  }, []);
+    if (status === "loading") return;
+    if (status === "authenticated") {
+      loadTenants();
+      return;
+    }
+    setLoading(false);
+  }, [status, session?.user?.id]);
 
   const loadTenants = async () => {
     if (!session?.user?.id) {
-      toast.error("User not authenticated");
       return;
     }
 
