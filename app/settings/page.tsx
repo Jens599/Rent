@@ -34,14 +34,18 @@ import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 
 export default function SettingsPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [deleteLoading, setDeleteLoading] = React.useState<string | null>(null);
   const [settingsLoading, setSettingsLoading] = React.useState(true);
   const [settingsSaving, setSettingsSaving] = React.useState(false);
   const [moduleReorderMode, setModuleReorderMode] = React.useState<"drag" | "buttons">("buttons");
 
   React.useEffect(() => {
-    if (!session?.user?.id) return;
+    if (status === "loading") return;
+    if (status !== "authenticated" || !session?.user?.id) {
+      setSettingsLoading(false);
+      return;
+    }
 
     const loadSettings = async () => {
       setSettingsLoading(true);
@@ -58,7 +62,7 @@ export default function SettingsPage() {
     };
 
     loadSettings();
-  }, [session?.user?.id]);
+  }, [status, session?.user?.id]);
 
   const saveModuleReorderMode = async (mode: "drag" | "buttons") => {
     if (!session?.user?.id) {

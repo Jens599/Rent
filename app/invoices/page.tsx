@@ -109,7 +109,7 @@ function ActionTooltip({
 }
 
 export default function InvoiceHistoryPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [invoices, setInvoices] = React.useState<Invoice[]>([]);
   const [invoicesWithDates, setInvoicesWithDates] = React.useState<
     (Invoice & { dateObj: Date })[]
@@ -140,8 +140,13 @@ export default function InvoiceHistoryPage() {
 
   // Load data
   React.useEffect(() => {
-    loadData();
-  }, []);
+    if (status === "loading") return;
+    if (status === "authenticated") {
+      loadData();
+      return;
+    }
+    setLoading(false);
+  }, [status, session?.user?.id]);
 
   // Update invoices with cached dates when invoices change
   React.useEffect(() => {
@@ -200,7 +205,6 @@ export default function InvoiceHistoryPage() {
 
   const loadData = async () => {
     if (!session?.user?.id) {
-      toast.error("User not authenticated");
       return;
     }
 

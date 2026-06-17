@@ -46,7 +46,7 @@ const getModuleKey = (calculationModule: CalculationModuleConfig) =>
   calculationModule._id || calculationModule.name;
 
 export default function InvoicePage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [tenants, setTenants] = React.useState<Tenant[]>([]);
   const [selectedTenant, setSelectedTenant] = React.useState<Tenant | null>(
     null,
@@ -69,13 +69,13 @@ export default function InvoicePage() {
   const [loading, setLoading] = React.useState(false);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
 
-  // Load tenants and settings
+  // Load initial invoice data after NextAuth finishes restoring the session.
   React.useEffect(() => {
-    // Initialize invoice date time
     setInvoiceDateTime(new Date());
+    if (status !== "authenticated") return;
     loadTenants();
     loadModules();
-  }, []);
+  }, [status, session?.user?.id]);
 
   // Load tenant data and previous invoice when tenant is selected
   React.useEffect(() => {
@@ -161,7 +161,6 @@ export default function InvoicePage() {
 
   const loadTenants = async () => {
     if (!session?.user?.id) {
-      toast.error("User not authenticated");
       return;
     }
 
@@ -176,7 +175,6 @@ export default function InvoicePage() {
 
   const loadLastInvoice = async (tenantId: string) => {
     if (!session?.user?.id) {
-      toast.error("User not authenticated");
       return;
     }
 
