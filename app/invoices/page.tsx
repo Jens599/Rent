@@ -28,6 +28,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Dialog,
@@ -63,6 +64,7 @@ import {
   CalendarIcon,
   UserIcon,
   CurrencyIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -131,6 +133,9 @@ export default function InvoiceHistoryPage() {
   const [selectedInvoice, setSelectedInvoice] = React.useState<Invoice | null>(
     null,
   );
+  const [deletingInvoiceId, setDeletingInvoiceId] = React.useState<string | null>(
+    null,
+  );
   const importInputRef = React.useRef<HTMLInputElement>(null);
 
   // Load data
@@ -140,13 +145,12 @@ export default function InvoiceHistoryPage() {
 
   // Update invoices with cached dates when invoices change
   React.useEffect(() => {
-    if (invoices.length > 0) {
-      const withDates = invoices.map((invoice) => ({
+    setInvoicesWithDates(
+      invoices.map((invoice) => ({
         ...invoice,
         dateObj: new Date(invoice.date),
-      }));
-      setInvoicesWithDates(withDates);
-    }
+      })),
+    );
   }, [invoices]);
 
   // Filter and sort invoices
@@ -308,6 +312,44 @@ export default function InvoiceHistoryPage() {
       "text/csv;charset=utf-8",
     );
     toast.success(`Exported ${filteredInvoices.length} invoice(s) as CSV`);
+  };
+
+  const handleDeleteInvoice = async (invoice: Invoice) => {
+    if (!session?.user?.id) {
+      toast.error("User not authenticated");
+      return;
+    }
+
+    setDeletingInvoiceId(invoice._id);
+
+    try {
+      const params = new URLSearchParams({
+        id: invoice._id,
+        userId: session.user.id,
+      });
+      const response = await fetch(`/api/invoices?${params.toString()}`, {
+        method: "DELETE",
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.error || "Failed to delete invoice");
+        return;
+      }
+
+      setInvoices((current) =>
+        current.filter((currentInvoice) => currentInvoice._id !== invoice._id),
+      );
+      setSelectedInvoice((current) =>
+        current?._id === invoice._id ? null : current,
+      );
+      toast.success(`Deleted invoice for ${invoice.tenantName}`);
+    } catch (error) {
+      console.error("Error deleting invoice:", error);
+      toast.error("Failed to delete invoice");
+    } finally {
+      setDeletingInvoiceId(null);
+    }
   };
 
   const parseCsvLine = (line: string) => {
@@ -776,7 +818,7 @@ export default function InvoiceHistoryPage() {
                           </div>
                         </div>
                       </div>
-                      <div className="w-full text-left sm:w-auto sm:text-right">
+                      <div className="w-full space-y-3 text-left sm:w-auto sm:text-right">
                         <p className="break-words text-xl font-bold text-primary sm:text-2xl">
                           Rs.{" "}
                           {invoice.total.toLocaleString("en-IN", {
@@ -789,6 +831,60 @@ export default function InvoiceHistoryPage() {
                           Electricity: Rs.{" "}
                           {invoice.electricityCost.toLocaleString()}
                         </p>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="sm"
+                              className="w-full sm:w-auto"
+                              disabled={deletingInvoiceId === invoice._id}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              <Trash2Icon className="h-4 w-4" />
+                              {deletingInvoiceId === invoice._id
+                                ? "Deleting..."
+                                : "Delete"}
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete invoice?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently remove the invoice for{" "}
+                                {invoice.tenantName} dated{" "}
+                                {new Date(invoice.date).toLocaleDateString(
+                                  "en-IN",
+                                  {
+                                    year: "numeric",
+                                    month: "long",
+                                    day: "numeric",
+                                  },
+                                )}
+                                . This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel
+                                disabled={deletingInvoiceId === invoice._id}
+                              >
+                                Cancel
+                              </AlertDialogCancel>
+                              <AlertDialogAction
+                                variant="destructive"
+                                disabled={deletingInvoiceId === invoice._id}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void handleDeleteInvoice(invoice);
+                                }}
+                              >
+                                Delete Invoice
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
                   </CardContent>
