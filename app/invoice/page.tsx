@@ -45,6 +45,13 @@ import Link from "next/link";
 const getModuleKey = (calculationModule: CalculationModuleConfig) =>
   calculationModule._id || calculationModule.name;
 
+interface CalculationModulePreset {
+  _id: string;
+  name: string;
+  description?: string;
+  modules: CalculationModuleConfig[];
+}
+
 export default function InvoicePage() {
   const { data: session, status } = useSession();
   const [tenants, setTenants] = React.useState<Tenant[]>([]);
@@ -60,6 +67,8 @@ export default function InvoicePage() {
   const [currentMonthReading, setCurrentMonthReading] =
     React.useState<string>("");
   const [modules, setModules] = React.useState<CalculationModuleConfig[]>([]);
+  const [presets, setPresets] = React.useState<CalculationModulePreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = React.useState("current");
   const [activeModuleIds, setActiveModuleIds] = React.useState<Set<string>>(
     new Set(),
   );
@@ -75,6 +84,7 @@ export default function InvoicePage() {
     if (status !== "authenticated") return;
     loadTenants();
     loadModules();
+    loadPresets();
   }, [status, session?.user?.id]);
 
   // Load tenant data and previous invoice when tenant is selected
@@ -136,9 +146,27 @@ export default function InvoicePage() {
     }
   };
 
+  const loadPresets = async () => {
+    try {
+      const response = await fetch("/api/calculation-module-presets");
+      if (!response.ok) throw new Error("Failed to load presets");
+      const data = await response.json();
+      setPresets(data);
+    } catch (error) {
+      console.error("Error loading billing presets:", error);
+    }
+  };
+
+  const selectedPreset = presets.find((preset) => preset._id === selectedPresetId);
+
+  const availableModules = React.useMemo(
+    () => selectedPreset?.modules ?? modules,
+    [selectedPreset?.modules, modules],
+  );
+
   const enabledModules = React.useMemo(
-    () => modules.filter((item) => item.enabled),
-    [modules],
+    () => availableModules.filter((item) => item.enabled),
+    [availableModules],
   );
 
   const selectedModules = React.useMemo(
@@ -157,6 +185,35 @@ export default function InvoicePage() {
       }
       return next;
     });
+  };
+
+  const handlePresetChange = (presetId: string) => {
+    setSelectedPresetId(presetId);
+    const nextModules =
+      presetId === "current"
+        ? modules
+        : presets.find((preset) => preset._id === presetId)?.modules ?? [];
+
+    setActiveModuleIds(
+      new Set(
+        nextModules
+          .filter((calculationModule) => calculationModule.enabled)
+          .map(getModuleKey),
+      ),
+    );
+
+    const electricityModule = nextModules.find(
+      (item) => item.output.key === "electricityCost",
+    );
+    const electricityRateInput = electricityModule?.inputs.find(
+      (input) => input.key === "electricityRate",
+    );
+    if (electricityRateInput?.defaultValue !== undefined) {
+      setModuleInputs((current) => ({
+        ...current,
+        electricityRate: String(electricityRateInput.defaultValue),
+      }));
+    }
   };
 
   const loadTenants = async () => {
@@ -349,6 +406,7 @@ export default function InvoicePage() {
         total,
         calculationInputs,
         calculationModuleIds: selectedModules.map(getModuleKey),
+        calculationModules: selectedModules,
       };
 
       const response = await fetch("/api/invoices", {
@@ -546,6 +604,32 @@ export default function InvoicePage() {
                       Auto-populated from selected tenant
                     </p>
                   </div>
+                </Field>
+
+                <Field>
+                  <FieldLabel htmlFor="billingPreset">Billing Preset</FieldLabel>
+                  <Select
+                    value={selectedPresetId}
+                    onValueChange={handlePresetChange}
+                  >
+                    <SelectTrigger id="billingPreset" className="w-full">
+                      <SelectValue placeholder="Choose a billing preset" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="current">Current module setup</SelectItem>
+                      {presets.map((preset) => (
+                        <SelectItem key={preset._id} value={preset._id}>
+                          {preset.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>
+                    {selectedPreset
+                      ? selectedPreset.description ||
+                        `${selectedPreset.modules.length} module(s) from this preset will be available.`
+                      : "Use your current module setup or choose a saved preset for this invoice only."}
+                  </FieldDescription>
                 </Field>
 
                 <div className="grid grid-cols-2 gap-4">
