@@ -779,117 +779,132 @@ export default function InvoiceHistoryPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              {filteredInvoices.map((invoice) => (
-                <Card
-                  key={invoice._id}
-                  className="cursor-pointer"
-                  onClick={() => setSelectedInvoice(invoice)}
-                >
-                  <CardContent className="p-4 sm:p-6">
-                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 space-y-2">
-                        <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <h3 className="min-w-0 break-words text-base font-semibold sm:text-lg">
-                            {invoice.tenantName}
-                          </h3>
-                          <Badge
-                            variant="secondary"
-                            className="max-w-full shrink truncate"
-                          >
-                            ID: {invoice._id}
-                          </Badge>
-                        </div>
-                        <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:gap-4">
-                          <div className="flex min-w-0 items-center gap-1">
-                            <CalendarIcon className="h-4 w-4 shrink-0" />
-                            {new Date(invoice.date).toLocaleDateString(
-                              "en-IN",
-                              {
-                                year: "numeric",
-                                month: "long",
-                                day: "numeric",
-                              },
-                            )}
+              {filteredInvoices.map((invoice) => {
+                const usedModuleNames = [
+                  ...new Set(
+                    invoice.calculationBreakdown
+                      ?.map((item) => item.moduleName)
+                      .filter(Boolean) ?? [],
+                  ),
+                ];
+
+                return (
+                  <Card
+                    key={invoice._id}
+                    className="cursor-pointer"
+                    onClick={() => setSelectedInvoice(invoice)}
+                  >
+                    <CardContent className="p-4 sm:p-6">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 space-y-2">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <h3 className="min-w-0 break-words text-base font-semibold sm:text-lg">
+                              {invoice.tenantName}
+                            </h3>
+                            <Badge
+                              variant="secondary"
+                              className="max-w-full shrink truncate"
+                            >
+                              ID: {invoice._id}
+                            </Badge>
                           </div>
-                          <div className="flex min-w-0 items-center gap-1">
-                            <span className="break-words">
-                              Units: {invoice.unitsConsumed.toFixed(2)}
-                            </span>
+                          <div className="flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:gap-4">
+                            <div className="flex min-w-0 items-center gap-1">
+                              <CalendarIcon className="h-4 w-4 shrink-0" />
+                              {new Date(invoice.date).toLocaleDateString(
+                                "en-IN",
+                                {
+                                  year: "numeric",
+                                  month: "long",
+                                  day: "numeric",
+                                },
+                              )}
+                            </div>
+                            <div className="flex min-w-0 items-center gap-1">
+                              <span className="break-words">
+                                Units: {invoice.unitsConsumed.toFixed(2)}
+                              </span>
+                            </div>
                           </div>
+                          {usedModuleNames.length > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              Modules used: {usedModuleNames.join(", ")}
+                            </p>
+                          )}
                         </div>
-                      </div>
-                      <div className="w-full space-y-3 text-left sm:w-auto sm:text-right">
-                        <p className="break-words text-xl font-bold text-primary sm:text-2xl">
-                          Rs.{" "}
-                          {invoice.total.toLocaleString("en-IN", {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </p>
-                        <p className="break-words text-xs text-muted-foreground sm:text-sm">
-                          Rent: Rs. {invoice.baseRent.toLocaleString()} +
-                          Electricity: Rs.{" "}
-                          {invoice.electricityCost.toLocaleString()}
-                        </p>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="sm"
-                              className="w-full sm:w-auto"
-                              disabled={deletingInvoiceId === invoice._id}
+                        <div className="w-full space-y-3 text-left sm:w-auto sm:text-right">
+                          <p className="break-words text-xl font-bold text-primary sm:text-2xl">
+                            Rs.{" "}
+                            {invoice.total.toLocaleString("en-IN", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </p>
+                          <p className="break-words text-xs text-muted-foreground sm:text-sm">
+                            Rent: Rs. {invoice.baseRent.toLocaleString()} +
+                            Electricity: Rs.{" "}
+                            {invoice.electricityCost.toLocaleString()}
+                          </p>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                className="w-full sm:w-auto"
+                                disabled={deletingInvoiceId === invoice._id}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <Trash2Icon className="h-4 w-4" />
+                                {deletingInvoiceId === invoice._id
+                                  ? "Deleting..."
+                                  : "Delete"}
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent
                               onClick={(event) => event.stopPropagation()}
                             >
-                              <Trash2Icon className="h-4 w-4" />
-                              {deletingInvoiceId === invoice._id
-                                ? "Deleting..."
-                                : "Delete"}
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete invoice?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will permanently remove the invoice for{" "}
-                                {invoice.tenantName} dated{" "}
-                                {new Date(invoice.date).toLocaleDateString(
-                                  "en-IN",
-                                  {
-                                    year: "numeric",
-                                    month: "long",
-                                    day: "numeric",
-                                  },
-                                )}
-                                . This action cannot be undone.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel
-                                disabled={deletingInvoiceId === invoice._id}
-                              >
-                                Cancel
-                              </AlertDialogCancel>
-                              <AlertDialogAction
-                                variant="destructive"
-                                disabled={deletingInvoiceId === invoice._id}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void handleDeleteInvoice(invoice);
-                                }}
-                              >
-                                Delete Invoice
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete invoice?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This will permanently remove the invoice for{" "}
+                                  {invoice.tenantName} dated{" "}
+                                  {new Date(invoice.date).toLocaleDateString(
+                                    "en-IN",
+                                    {
+                                      year: "numeric",
+                                      month: "long",
+                                      day: "numeric",
+                                    },
+                                  )}
+                                  . This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel
+                                  disabled={deletingInvoiceId === invoice._id}
+                                >
+                                  Cancel
+                                </AlertDialogCancel>
+                                <AlertDialogAction
+                                  variant="destructive"
+                                  disabled={deletingInvoiceId === invoice._id}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleDeleteInvoice(invoice);
+                                  }}
+                                >
+                                  Delete Invoice
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </CardContent>

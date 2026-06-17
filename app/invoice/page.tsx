@@ -25,7 +25,13 @@ import {
   FieldError,
   FieldDescription,
 } from "@/components/ui/field";
-import { CalendarIcon, FileTextIcon, HomeIcon, UserIcon } from "lucide-react";
+import {
+  CalendarIcon,
+  FileTextIcon,
+  HomeIcon,
+  Settings2Icon,
+  UserIcon,
+} from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { InvoiceDisplay } from "@/components/invoice-display";
@@ -35,6 +41,9 @@ import { runCalculationModules } from "@/lib/calculations/evaluator";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+
+const getModuleKey = (calculationModule: CalculationModuleConfig) =>
+  calculationModule._id || calculationModule.name;
 
 export default function InvoicePage() {
   const { data: session } = useSession();
@@ -51,6 +60,9 @@ export default function InvoicePage() {
   const [currentMonthReading, setCurrentMonthReading] =
     React.useState<string>("");
   const [modules, setModules] = React.useState<CalculationModuleConfig[]>([]);
+  const [activeModuleIds, setActiveModuleIds] = React.useState<Set<string>>(
+    new Set(),
+  );
   const [moduleInputs, setModuleInputs] = React.useState<Record<string, string>>({});
   const [generatedInvoice, setGeneratedInvoice] =
     React.useState<Invoice | null>(null);
@@ -99,6 +111,13 @@ export default function InvoicePage() {
       if (response.ok) {
         const data = await response.json();
         setModules(data);
+        setActiveModuleIds(
+          new Set(
+            data
+              .filter((item: CalculationModuleConfig) => item.enabled)
+              .map(getModuleKey),
+          ),
+        );
         const electricityModule = data.find(
           (item: CalculationModuleConfig) => item.output.key === "electricityCost",
         );
@@ -115,6 +134,29 @@ export default function InvoicePage() {
     } catch (error) {
       console.error("Error loading calculation modules:", error);
     }
+  };
+
+  const enabledModules = React.useMemo(
+    () => modules.filter((item) => item.enabled),
+    [modules],
+  );
+
+  const selectedModules = React.useMemo(
+    () =>
+      enabledModules.filter((item) => activeModuleIds.has(getModuleKey(item))),
+    [enabledModules, activeModuleIds],
+  );
+
+  const handleModuleToggle = (moduleId: string, checked: boolean) => {
+    setActiveModuleIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(moduleId);
+      } else {
+        next.delete(moduleId);
+      }
+      return next;
+    });
   };
 
   const loadTenants = async () => {
@@ -175,7 +217,7 @@ export default function InvoicePage() {
       options?: string[];
       defaultValue?: number | string | boolean;
     }>();
-    for (const calculationModule of modules.filter((item) => item.enabled)) {
+    for (const calculationModule of selectedModules) {
       for (const input of calculationModule.inputs) {
         uniqueInputs.set(input.key, {
           key: input.key,
@@ -194,7 +236,7 @@ export default function InvoicePage() {
         input.exposed !== false &&
         !["previousMonthReading", "currentMonthReading", "electricityRate"].includes(input.key),
     );
-  }, [modules]);
+  }, [selectedModules]);
 
   const calculationInputs = React.useMemo<Record<string, number | string | boolean>>(
     () => ({
@@ -207,14 +249,18 @@ export default function InvoicePage() {
   );
 
   const calculation = React.useMemo(() => {
-    if (!selectedTenant || modules.length === 0) {
+    if (!selectedTenant || selectedModules.length === 0) {
       return { results: [], total: 0, errors: [] };
     }
-    return runCalculationModules(modules, calculationInputs);
-  }, [selectedTenant, modules, calculationInputs]);
+    return runCalculationModules(selectedModules, calculationInputs);
+  }, [selectedTenant, selectedModules, calculationInputs]);
 
   const getCalculatedValue = (key: string) =>
     calculation.results.find((result) => result.outputKey === key)?.value ?? 0;
+
+  const selectedElectricityRateInput = selectedModules
+    .flatMap((item) => item.inputs)
+    .find((input) => input.key === "electricityRate");
 
   const unitsConsumed = getCalculatedValue("electricityUnits");
   const electricityCost = getCalculatedValue("electricityCost");
@@ -226,6 +272,10 @@ export default function InvoicePage() {
     // Tenant validation
     if (!selectedTenant) {
       newErrors.tenant = "Please select a tenant";
+    }
+
+    if (selectedModules.length === 0) {
+      newErrors.modules = "Please select at least one calculation module";
     }
 
     // Date validation
@@ -300,6 +350,7 @@ export default function InvoicePage() {
         electricityCost,
         total,
         calculationInputs,
+        calculationModuleIds: selectedModules.map(getModuleKey),
       };
 
       const response = await fetch("/api/invoices", {
@@ -571,6 +622,66 @@ export default function InvoicePage() {
                   </Field>
                 </div>
 
+                {enabledModules.length > 0 && (
+                  <Card className="bg-muted/30">
+                    <CardHeader className="pb-3">
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Settings2Icon className="h-4 w-4" />
+                        Calculation Modules
+                      </CardTitle>
+                      <CardDescription>
+                        Choose which saved modules should be used for this invoice.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {enabledModules.map((calculationModule) => {
+                          const moduleId = getModuleKey(calculationModule);
+                          const selected = activeModuleIds.has(moduleId);
+
+                          return (
+                            <label
+                              key={moduleId}
+                              className="flex cursor-pointer gap-3 border bg-background p-3 text-sm transition-colors hover:bg-muted/50"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={(event) =>
+                                  handleModuleToggle(
+                                    moduleId,
+                                    event.target.checked,
+                                  )
+                                }
+                                className="mt-1"
+                              />
+                              <span className="min-w-0 space-y-1">
+                                <span className="block font-medium">
+                                  {calculationModule.name}
+                                </span>
+                                <span className="block text-xs text-muted-foreground">
+                                  {calculationModule.output.label} from{" "}
+                                  {calculationModule.category}
+                                </span>
+                                {calculationModule.description && (
+                                  <span className="block text-xs text-muted-foreground">
+                                    {calculationModule.description}
+                                  </span>
+                                )}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {errors.modules && (
+                        <FieldError className="mt-3">
+                          {errors.modules}
+                        </FieldError>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+
                 {allModuleInputs.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {allModuleInputs.map((input) => {
@@ -664,25 +775,30 @@ export default function InvoicePage() {
                 )}
 
                 {/* Current Rate Display */}
-                <Card className="bg-muted/50">
-                  <CardContent className="pt-4">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">
-                          Current Electricity Rate
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          From the Electricity Charge module input default.
-                        </p>
+                {selectedElectricityRateInput && (
+                  <Card className="bg-muted/50">
+                    <CardContent className="pt-4">
+                      <div className="flex items-center justify-between">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">
+                            Current Electricity Rate
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            From the selected electricity module input default.
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-primary">
+                            Rs. {Number(
+                              calculationInputs.electricityRate || 0,
+                            ).toFixed(2)}
+                            /unit
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-lg font-bold text-primary">
-                          Rs. {Number(calculationInputs.electricityRate || 0).toFixed(2)}/unit
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                    </CardContent>
+                  </Card>
+                )}
 
                 {/* Calculation Preview */}
                 {currentMonthReading && (
