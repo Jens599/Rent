@@ -1,3 +1,5 @@
+import type { Id } from "@/convex/_generated/dataModel";
+
 export interface Tenant {
   _id: string;
   userId: string;
@@ -27,7 +29,7 @@ export interface Invoice {
 export interface PaymentQrSnapshot {
   name: string;
   provider: string;
-  storageId: string;
+  storageId: Id<"_storage">;
   imageUrl?: string | null;
 }
 
