@@ -32,6 +32,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
+import Image from "next/image";
+import { Input } from "@/components/ui/input";
+import type { PaymentMethod } from "@/lib/types";
 
 export default function SettingsPage() {
   const { data: session, status } = useSession();
@@ -39,6 +42,11 @@ export default function SettingsPage() {
   const [settingsLoading, setSettingsLoading] = React.useState(true);
   const [settingsSaving, setSettingsSaving] = React.useState(false);
   const [moduleReorderMode, setModuleReorderMode] = React.useState<"drag" | "buttons">("buttons");
+  const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethod[]>([]);
+  const [paymentName, setPaymentName] = React.useState("");
+  const [paymentProvider, setPaymentProvider] = React.useState("Bank transfer");
+  const [paymentImage, setPaymentImage] = React.useState<File | null>(null);
+  const [paymentSaving, setPaymentSaving] = React.useState(false);
 
   React.useEffect(() => {
     if (status === "loading") return;
@@ -50,10 +58,18 @@ export default function SettingsPage() {
     const loadSettings = async () => {
       setSettingsLoading(true);
       try {
-        const response = await fetch(`/api/settings?userId=${session.user.id}`);
+        const [response, paymentResponse] = await Promise.all([
+          fetch(`/api/settings?userId=${session.user.id}`),
+          fetch(`/api/payment-methods?userId=${session.user.id}`),
+        ]);
         if (!response.ok) throw new Error("Failed to load settings");
-        const data = await response.json();
+        if (!paymentResponse.ok) throw new Error("Failed to load payment methods");
+        const [data, methods] = await Promise.all([
+          response.json(),
+          paymentResponse.json(),
+        ]);
         setModuleReorderMode(data.moduleReorderMode === "drag" ? "drag" : "buttons");
+        setPaymentMethods(methods);
       } catch (error) {
         toast.error("Failed to load preferences");
       } finally {
@@ -63,6 +79,75 @@ export default function SettingsPage() {
 
     loadSettings();
   }, [status, session?.user?.id]);
+
+  const savePaymentMethod = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!session?.user?.id || !paymentImage) {
+      toast.error("Choose a QR image to upload");
+      return;
+    }
+    setPaymentSaving(true);
+    try {
+      const formData = new FormData();
+      formData.set("userId", session.user.id);
+      formData.set("name", paymentName.trim() || paymentProvider);
+      formData.set("provider", paymentProvider);
+      formData.set("image", paymentImage);
+      const response = await fetch("/api/payment-methods", {
+        method: "POST",
+        body: formData,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Upload failed");
+
+      const methodsResponse = await fetch(
+        `/api/payment-methods?userId=${session.user.id}`,
+      );
+      if (!methodsResponse.ok) throw new Error("Could not refresh payment methods");
+      setPaymentMethods(await methodsResponse.json());
+      setPaymentName("");
+      setPaymentImage(null);
+      const fileInput = document.getElementById(
+        "payment-qr-image",
+      ) as HTMLInputElement | null;
+      if (fileInput) fileInput.value = "";
+      toast.success("Payment QR saved");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save payment QR",
+      );
+    } finally {
+      setPaymentSaving(false);
+    }
+  };
+
+  const removePaymentMethod = async (method: PaymentMethod) => {
+    if (!session?.user?.id) return;
+    if (
+      !window.confirm(
+        `Remove ${method.name}? Existing invoices will keep their saved QR image.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      const response = await fetch("/api/payment-methods", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: session.user.id,
+          methodId: method._id,
+        }),
+      });
+      if (!response.ok) throw new Error("Failed to remove payment QR");
+      setPaymentMethods((current) =>
+        current.filter((item) => item._id !== method._id),
+      );
+      toast.success("Payment QR removed");
+    } catch {
+      toast.error("Failed to remove payment QR");
+    }
+  };
 
   const saveModuleReorderMode = async (mode: "drag" | "buttons") => {
     if (!session?.user?.id) {
@@ -193,6 +278,96 @@ export default function SettingsPage() {
           Manage your application settings and preferences
         </p>
       </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Payment QR codes</CardTitle>
+          <CardDescription>
+            Save bank, eSewa, Khalti, or other payment QR images. Choose which
+            ones to include while creating each invoice.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <form onSubmit={savePaymentMethod} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="space-y-2 text-sm font-medium">
+                Payment provider
+                <select
+                  value={paymentProvider}
+                  onChange={(event) => setPaymentProvider(event.target.value)}
+                  className="flex h-9 w-full rounded-md border bg-background px-3 py-1 text-sm"
+                >
+                  <option>Bank transfer</option>
+                  <option>eSewa</option>
+                  <option>Khalti</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label className="space-y-2 text-sm font-medium">
+                Display name
+                <Input
+                  value={paymentName}
+                  onChange={(event) => setPaymentName(event.target.value)}
+                  placeholder="Optional, e.g. Rent account"
+                  maxLength={60}
+                />
+              </label>
+              <label className="space-y-2 text-sm font-medium sm:col-span-2">
+                QR image (PNG, JPEG, or WebP; up to 500 KB)
+                <Input
+                  id="payment-qr-image"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) =>
+                    setPaymentImage(event.target.files?.[0] ?? null)
+                  }
+                  required
+                />
+              </label>
+            </div>
+            <Button type="submit" disabled={paymentSaving || !paymentImage}>
+              {paymentSaving ? "Saving QR…" : "Add payment QR"}
+            </Button>
+          </form>
+
+          {paymentMethods.length > 0 && (
+            <div className="grid gap-3 border-t pt-5 sm:grid-cols-2">
+              {paymentMethods.map((method) => (
+                <div
+                  key={method._id}
+                  className="flex items-center gap-3 rounded-lg border p-3"
+                >
+                  {method.imageUrl && (
+                    <Image
+                      src={method.imageUrl}
+                      alt={`${method.provider} QR code`}
+                      width={64}
+                      height={64}
+                      unoptimized
+                      className="size-16 rounded border object-contain"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium">{method.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {method.provider}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Remove ${method.name}`}
+                    onClick={() => removePaymentMethod(method)}
+                  >
+                    <TrashIcon className="size-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card className="mb-6 overflow-hidden border-primary/15 bg-gradient-to-br from-background to-muted/30">
         <CardHeader>

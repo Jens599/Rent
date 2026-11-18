@@ -35,11 +35,12 @@ import {
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { InvoiceDisplay } from "@/components/invoice-display";
-import type { Tenant, Invoice } from "@/lib/types";
+import type { Tenant, Invoice, PaymentMethod } from "@/lib/types";
 import type { CalculationModuleConfig } from "@/lib/calculations/types";
 import { runCalculationModules } from "@/lib/calculations/evaluator";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
+import Image from "next/image";
 import Link from "next/link";
 
 const getModuleKey = (calculationModule: CalculationModuleConfig) =>
@@ -55,6 +56,9 @@ interface CalculationModulePreset {
 export default function InvoicePage() {
   const { data: session, status } = useSession();
   const [tenants, setTenants] = React.useState<Tenant[]>([]);
+  const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethod[]>([]);
+  const [selectedPaymentMethodIds, setSelectedPaymentMethodIds] =
+    React.useState<Set<string>>(new Set());
   const [selectedTenant, setSelectedTenant] = React.useState<Tenant | null>(
     null,
   );
@@ -85,6 +89,7 @@ export default function InvoicePage() {
     loadTenants();
     loadModules();
     loadPresets();
+    loadPaymentMethods();
   }, [status, session?.user?.id]);
 
   // Load tenant data and previous invoice when tenant is selected
@@ -227,6 +232,19 @@ export default function InvoicePage() {
       setTenants(data);
     } catch (error) {
       console.error("Error loading tenants:", error);
+    }
+  };
+
+  const loadPaymentMethods = async () => {
+    if (!session?.user?.id) return;
+    try {
+      const response = await fetch(
+        `/api/payment-methods?userId=${session.user.id}`,
+      );
+      if (!response.ok) throw new Error("Failed to load payment methods");
+      setPaymentMethods(await response.json());
+    } catch (error) {
+      console.error("Error loading payment methods:", error);
     }
   };
 
@@ -407,6 +425,7 @@ export default function InvoicePage() {
         calculationInputs,
         calculationModuleIds: selectedModules.map(getModuleKey),
         calculationModules: selectedModules,
+        paymentMethodIds: [...selectedPaymentMethodIds],
       };
 
       const response = await fetch("/api/invoices", {
@@ -631,6 +650,68 @@ export default function InvoicePage() {
                       : "Use your current module setup or choose a saved preset for this invoice only."}
                   </FieldDescription>
                 </Field>
+
+                <Card className="bg-muted/20">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base">
+                      Payment QR codes
+                    </CardTitle>
+                    <CardDescription>
+                      Select the payment options to show on this invoice.
+                    </CardDescription>
+                  </CardHeader>
+                  {paymentMethods.length > 0 ? (
+                    <CardContent className="grid gap-3 sm:grid-cols-2">
+                      {paymentMethods.map((method) => (
+                        <label
+                          key={method._id}
+                          className="flex cursor-pointer items-center gap-3 rounded-md border bg-background p-3"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedPaymentMethodIds.has(method._id)}
+                            onChange={(event) =>
+                              setSelectedPaymentMethodIds((current) => {
+                                const next = new Set(current);
+                                if (event.target.checked) next.add(method._id);
+                                else next.delete(method._id);
+                                return next;
+                              })
+                            }
+                          />
+                          {method.imageUrl && (
+                            <Image
+                              src={method.imageUrl}
+                              alt=""
+                              width={48}
+                              height={48}
+                              unoptimized
+                              crossOrigin="anonymous"
+                              className="size-12 rounded border bg-white object-contain"
+                            />
+                          )}
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium">
+                              {method.name}
+                            </span>
+                            <span className="block text-xs text-muted-foreground">
+                              {method.provider}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </CardContent>
+                  ) : (
+                    <CardContent className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm text-muted-foreground">
+                        No payment QRs saved yet.
+                      </p>
+                      <Button asChild variant="outline" size="sm">
+                        <Link href="/settings">Add QR in Settings</Link>
+                      </Button>
+                    </CardContent>
+                  )}
+                </Card>
 
                 <div className="grid grid-cols-2 gap-4">
                   <Field>

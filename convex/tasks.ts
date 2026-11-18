@@ -105,13 +105,29 @@ export const createInvoice = mutation({
     electricityCost: v.number(),
     total: v.number(),
     calculationBreakdown: v.optional(v.any()),
+    paymentQrs: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          provider: v.string(),
+          storageId: v.id("_storage"),
+        }),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const invoiceId = await ctx.db.insert("invoices", args);
+    const paymentQrs = await Promise.all(
+      (args.paymentQrs ?? []).map(async (paymentQr) => ({
+        ...paymentQr,
+        imageUrl: await ctx.storage.getUrl(paymentQr.storageId),
+      })),
+    );
     // Return the complete invoice object with the generated ID
     return {
       _id: invoiceId,
       ...args,
+      paymentQrs,
     };
   },
 });
@@ -127,6 +143,15 @@ export const deleteUser = mutation({
 
     for (const invoice of userInvoices) {
       await ctx.db.delete(invoice._id);
+    }
+
+    const userPaymentMethods = await ctx.db
+      .query("paymentMethods")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+    for (const method of userPaymentMethods) {
+      await ctx.storage.delete(method.storageId);
+      await ctx.db.delete(method._id);
     }
 
     // Then delete all tenants for this user
@@ -265,7 +290,17 @@ export const getInvoices = query({
       .query("invoices")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .collect();
-    return invoices;
+    return Promise.all(
+      invoices.map(async (invoice) => ({
+        ...invoice,
+        paymentQrs: await Promise.all(
+          (invoice.paymentQrs ?? []).map(async (paymentQr) => ({
+            ...paymentQr,
+            imageUrl: await ctx.storage.getUrl(paymentQr.storageId),
+          })),
+        ),
+      })),
+    );
   },
 });
 
@@ -280,7 +315,17 @@ export const getInvoicesByTenant = query({
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .filter((q) => q.eq(q.field("tenantId"), args.tenantId))
       .collect();
-    return invoices;
+    return Promise.all(
+      invoices.map(async (invoice) => ({
+        ...invoice,
+        paymentQrs: await Promise.all(
+          (invoice.paymentQrs ?? []).map(async (paymentQr) => ({
+            ...paymentQr,
+            imageUrl: await ctx.storage.getUrl(paymentQr.storageId),
+          })),
+        ),
+      })),
+    );
   },
 });
 
@@ -573,6 +618,76 @@ export const getSettings = query({
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .first();
     return settings;
+  },
+});
+
+// Payment QR image operations
+export const generatePaymentQrUploadUrl = mutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx) => ctx.storage.generateUploadUrl(),
+});
+
+export const createPaymentMethod = mutation({
+  args: {
+    userId: v.id("users"),
+    name: v.string(),
+    provider: v.string(),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args) => {
+    const methodId = await ctx.db.insert("paymentMethods", {
+      ...args,
+      createdAt: new Date().toISOString(),
+    });
+    return methodId;
+  },
+});
+
+export const getPaymentMethods = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    const methods = await ctx.db
+      .query("paymentMethods")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+    return Promise.all(
+      methods.map(async (method) => ({
+        ...method,
+        imageUrl: await ctx.storage.getUrl(method.storageId),
+      })),
+    );
+  },
+});
+
+export const getPaymentQrStorageUrl = query({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, args) => ctx.storage.getUrl(args.storageId),
+});
+
+export const deletePaymentMethod = mutation({
+  args: {
+    userId: v.id("users"),
+    methodId: v.id("paymentMethods"),
+  },
+  handler: async (ctx, args) => {
+    const method = await ctx.db.get(args.methodId);
+    if (!method || method.userId !== args.userId) {
+      throw new Error("Payment method not found");
+    }
+    const invoices = await ctx.db
+      .query("invoices")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .collect();
+    const imageIsUsedByInvoice = invoices.some((invoice) =>
+      invoice.paymentQrs?.some(
+        (paymentQr) => paymentQr.storageId === method.storageId,
+      ),
+    );
+    if (!imageIsUsedByInvoice) {
+      await ctx.storage.delete(method.storageId);
+    }
+    await ctx.db.delete(args.methodId);
+    return args.methodId;
   },
 });
 

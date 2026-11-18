@@ -21,6 +21,20 @@ export interface Invoice {
   electricityCost: number;
   total: number;
   calculationBreakdown?: CalculationBreakdownItem[];
+  paymentQrs?: PaymentQrSnapshot[];
+}
+
+export interface PaymentQrSnapshot {
+  name: string;
+  provider: string;
+  storageId: string;
+  imageUrl?: string | null;
+}
+
+export interface PaymentMethod extends PaymentQrSnapshot {
+  _id: string;
+  userId: string;
+  createdAt: string;
 }
 
 export interface CalculationBreakdownItem {

@@ -49,6 +49,15 @@ export default defineSchema({
         }),
       ),
     ),
+    paymentQrs: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          provider: v.string(),
+          storageId: v.id("_storage"),
+        }),
+      ),
+    ),
   }).index("by_userId", ["userId"]),
 
   calculationModules: defineTable({
@@ -102,4 +111,12 @@ export default defineSchema({
   })
     .index("by_single", ["electricityRate"])
     .index("by_userId", ["userId"]),
+
+  paymentMethods: defineTable({
+    userId: v.id("users"),
+    name: v.string(),
+    provider: v.string(),
+    storageId: v.id("_storage"),
+    createdAt: v.string(),
+  }).index("by_userId", ["userId"]),
 });
