@@ -348,10 +348,10 @@ function InvoiceDocument({
               R
             </div>
             <h2 className="font-sans text-2xl font-black tracking-[-.06em]">
-              CORNER MARKET
+              RENT RECEIPT
             </h2>
             <p className="mt-1 text-[9px] uppercase tracking-[.1em]">
-              Rent account · Monthly statement
+              Monthly account statement
             </p>
           </header>
           <div className="my-5 border-t border-dashed border-[#77776f]" />
