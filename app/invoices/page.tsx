@@ -1194,11 +1194,11 @@ export default function InvoiceHistoryPage() {
         open={!!selectedInvoice}
         onOpenChange={(open) => !open && setSelectedInvoice(null)}
       >
-        <DialogContent className="overflow-y-auto p-0 min-w-2/5">
-          <DialogHeader className="p-6 pb-0">
+        <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden p-0 sm:max-w-5xl">
+          <DialogHeader className="shrink-0 p-6 pb-0">
             <DialogTitle>Invoice Details</DialogTitle>
           </DialogHeader>
-          <div className="p-6 pt-4">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pt-4 sm:p-6">
             {selectedInvoice && <InvoiceDisplay invoice={selectedInvoice} />}
           </div>
         </DialogContent>
