@@ -257,7 +257,7 @@ function InvoiceDocument({
           <span>Debit</span>
         </div>
         <div className="text-sm">
-          <ChargeRows invoice />
+          <ChargeRows invoice={invoice} />
         </div>
         <div className="mt-6 flex justify-end gap-6 border-b border-[#aeb5a8] py-5">
           <span className="self-center font-mono text-[10px] font-bold uppercase tracking-wider text-[#657064]">
@@ -313,7 +313,7 @@ function InvoiceDocument({
             </span>
           </div>
           <div className="mt-5 text-sm">
-            <ChargeRows invoice />
+            <ChargeRows invoice={invoice} />
           </div>
           <PaymentQrList paymentQrs={paymentQrs} compact />
         </div>
@@ -371,7 +371,7 @@ function InvoiceDocument({
             <span>Amount</span>
           </div>
           <div className="text-[11px]">
-            <ChargeRows invoice compact />
+            <ChargeRows invoice={invoice} compact />
           </div>
           <div className="mt-4 flex justify-between border-y-2 border-[#20201e] py-3 text-xs font-black">
             <span>Total due</span>
@@ -431,7 +431,7 @@ function InvoiceDocument({
             <span>Amount</span>
           </div>
           <div className="divide-y divide-slate-100">
-            <ChargeRows invoice />
+            <ChargeRows invoice={invoice} />
           </div>
         </section>
         <PaymentQrList paymentQrs={paymentQrs} />
