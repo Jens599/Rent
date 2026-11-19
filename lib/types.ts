@@ -1,3 +1,5 @@
+import type { Id } from "@/convex/_generated/dataModel";
+
 export interface Tenant {
   _id: string;
   userId: string;
@@ -21,6 +23,20 @@ export interface Invoice {
   electricityCost: number;
   total: number;
   calculationBreakdown?: CalculationBreakdownItem[];
+  paymentQrs?: PaymentQrSnapshot[];
+}
+
+export interface PaymentQrSnapshot {
+  name: string;
+  provider: string;
+  storageId: Id<"_storage">;
+  imageUrl?: string | null;
+}
+
+export interface PaymentMethod extends PaymentQrSnapshot {
+  _id: string;
+  userId: string;
+  createdAt: string;
 }
 
 export interface CalculationBreakdownItem {

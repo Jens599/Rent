@@ -135,4 +135,22 @@
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
   }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #rent-invoice-print-area,
+  #rent-invoice-print-area * {
+    visibility: visible;
+  }
+
+  #rent-invoice-print-area {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    border: 0;
+    box-shadow: none;
+  }
 }

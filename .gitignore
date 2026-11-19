@@ -47,3 +47,6 @@ next-env.d.ts
 
 # Local import test data
 /dummy-history-import.json
+
+# Temporary invoice design previews
+/invoice-design-variations.html

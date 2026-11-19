@@ -7,6 +7,16 @@ import type { CalculationModuleConfig } from "@/lib/calculations/types";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+const withLocalPaymentQrUrls = <T extends { paymentQrs?: Array<{ storageId: string }> }>(
+  invoice: T,
+) => ({
+  ...invoice,
+  paymentQrs: (invoice.paymentQrs ?? []).map((paymentQr) => ({
+    ...paymentQr,
+    imageUrl: `/api/payment-methods/image?storageId=${encodeURIComponent(paymentQr.storageId)}`,
+  })),
+});
+
 // GET - Get all invoices or filter by tenantId
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -38,7 +48,7 @@ export async function GET(request: NextRequest) {
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
 
-    return NextResponse.json(invoices);
+    return NextResponse.json(invoices.map(withLocalPaymentQrUrls));
   } catch (error) {
     logger.error("api_invoices_get_failed", error as Error, {
       userId,
@@ -116,12 +126,41 @@ export async function POST(request: NextRequest) {
       delete invoiceData.calculationModules;
     }
 
+    const selectedPaymentMethodIds = Array.isArray(
+      invoiceData.paymentMethodIds,
+    )
+      ? new Set(invoiceData.paymentMethodIds.map(String))
+      : new Set<string>();
+    delete invoiceData.paymentMethodIds;
+
+    if (selectedPaymentMethodIds.size > 0) {
+      const paymentMethods = await convex.query(api.tasks.getPaymentMethods, {
+        userId: invoiceData.userId as any,
+      });
+      const selectedMethods = paymentMethods.filter((method) =>
+        selectedPaymentMethodIds.has(String(method._id)),
+      );
+      if (selectedMethods.length !== selectedPaymentMethodIds.size) {
+        return NextResponse.json(
+          { error: "One or more selected payment methods are unavailable" },
+          { status: 400 },
+        );
+      }
+      invoiceData.paymentQrs = selectedMethods.map((method) => ({
+        name: method.name,
+        provider: method.provider,
+        storageId: method.storageId,
+      }));
+    } else {
+      invoiceData.paymentQrs = [];
+    }
+
     const newInvoice = await convex.mutation(
       api.tasks.createInvoice,
       invoiceData,
     );
 
-    return NextResponse.json(newInvoice);
+    return NextResponse.json(withLocalPaymentQrUrls(newInvoice));
   } catch (error) {
     logger.error("api_invoices_post_failed", error as Error, { invoiceData });
     return NextResponse.json(
