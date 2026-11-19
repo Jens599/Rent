@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
+import type { Id } from "@/convex/_generated/dataModel";
 import { logger } from "@/lib/logger";
 import { runCalculationModules } from "@/lib/calculations/evaluator";
 import type { CalculationModuleConfig } from "@/lib/calculations/types";
@@ -170,6 +171,71 @@ export async function POST(request: NextRequest) {
     logger.error("api_invoices_post_failed", error as Error, { invoiceData });
     return NextResponse.json(
       { error: "Failed to create invoice" },
+      { status: 500 },
+    );
+  }
+}
+
+// PATCH - Add saved payment QR codes to an existing invoice, including history.
+export async function PATCH(request: NextRequest) {
+  let invoiceId: string | undefined;
+  try {
+    const body = await request.json();
+    const userId = body?.userId;
+    invoiceId = body?.invoiceId;
+    const paymentMethodIds = body?.paymentMethodIds;
+
+    if (
+      typeof userId !== "string" ||
+      typeof invoiceId !== "string" ||
+      !Array.isArray(paymentMethodIds) ||
+      paymentMethodIds.length === 0 ||
+      paymentMethodIds.some((id: unknown) => typeof id !== "string")
+    ) {
+      return NextResponse.json(
+        { error: "Invoice, user, and at least one payment method are required" },
+        { status: 400 },
+      );
+    }
+
+    const uniqueMethodIds = [...new Set(paymentMethodIds as string[])];
+    const methods = await convex.query(api.tasks.getPaymentMethods, {
+      userId: userId as Id<"users">,
+    });
+    const selectedMethods = methods.filter((method) =>
+      uniqueMethodIds.includes(String(method._id)),
+    );
+    if (selectedMethods.length !== uniqueMethodIds.length) {
+      return NextResponse.json(
+        { error: "One or more selected payment methods are unavailable" },
+        { status: 400 },
+      );
+    }
+
+    const updatedInvoice = await convex.mutation(
+      api.tasks.addPaymentQrsToInvoice,
+      {
+        userId: userId as Id<"users">,
+        invoiceId: invoiceId as Id<"invoices">,
+        paymentQrs: selectedMethods.map((method) => ({
+          name: method.name,
+          provider: method.provider,
+          storageId: method.storageId,
+          ...(method.borderColor && { borderColor: method.borderColor }),
+          ...(method.borderWidth !== undefined && {
+            borderWidth: method.borderWidth,
+          }),
+          ...(method.borderStyle && { borderStyle: method.borderStyle }),
+        })),
+      },
+    );
+    return NextResponse.json(withLocalPaymentQrUrls(updatedInvoice));
+  } catch (error) {
+    logger.error("api_invoices_add_payment_qrs_failed", error as Error, {
+      invoiceId,
+    });
+    return NextResponse.json(
+      { error: "Failed to add payment QR codes to invoice" },
       { status: 500 },
     );
   }

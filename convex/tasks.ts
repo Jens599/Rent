@@ -137,6 +137,42 @@ export const createInvoice = mutation({
   },
 });
 
+export const addPaymentQrsToInvoice = mutation({
+  args: {
+    userId: v.id("users"),
+    invoiceId: v.id("invoices"),
+    paymentQrs: v.array(
+      v.object({
+        name: v.string(),
+        provider: v.string(),
+        storageId: v.id("_storage"),
+        borderColor: v.optional(v.string()),
+        borderWidth: v.optional(v.number()),
+        borderStyle: v.optional(
+          v.union(v.literal("solid"), v.literal("dashed"), v.literal("dotted")),
+        ),
+      }),
+    ),
+  },
+  handler: async (ctx, args) => {
+    const invoice = await ctx.db.get(args.invoiceId);
+    if (!invoice || invoice.userId !== args.userId) {
+      throw new Error("Invoice not found");
+    }
+
+    const existingQrs = invoice.paymentQrs ?? [];
+    const existingStorageIds = new Set(
+      existingQrs.map((paymentQr) => String(paymentQr.storageId)),
+    );
+    const additions = args.paymentQrs.filter(
+      (paymentQr) => !existingStorageIds.has(String(paymentQr.storageId)),
+    );
+    const paymentQrs = [...existingQrs, ...additions];
+    await ctx.db.patch(args.invoiceId, { paymentQrs });
+    return { ...invoice, paymentQrs };
+  },
+});
+
 export const deleteUser = mutation({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {

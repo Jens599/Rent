@@ -53,7 +53,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { InvoiceDisplay } from "@/components/invoice-display";
-import type { Tenant, Invoice } from "@/lib/types";
+import type { Tenant, Invoice, PaymentMethod } from "@/lib/types";
 import {
   ChevronDownIcon,
   FileTextIcon,
@@ -65,6 +65,7 @@ import {
   UserIcon,
   CurrencyIcon,
   Trash2Icon,
+  QrCodeIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -115,6 +116,11 @@ export default function InvoiceHistoryPage() {
     (Invoice & { dateObj: Date })[]
   >([]);
   const [tenants, setTenants] = React.useState<Tenant[]>([]);
+  const [paymentMethods, setPaymentMethods] = React.useState<PaymentMethod[]>([]);
+  const [selectedPaymentMethodIds, setSelectedPaymentMethodIds] = React.useState<
+    Set<string>
+  >(new Set());
+  const [savingPaymentQrs, setSavingPaymentQrs] = React.useState(false);
   const [filteredInvoices, setFilteredInvoices] = React.useState<Invoice[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState("");
@@ -209,9 +215,11 @@ export default function InvoiceHistoryPage() {
     }
 
     try {
-      const [invoicesResponse, tenantsResponse] = await Promise.all([
+      const [invoicesResponse, tenantsResponse, paymentMethodsResponse] =
+        await Promise.all([
         fetch(`/api/invoices?userId=${session.user.id}`),
         fetch(`/api/tenants?userId=${session.user.id}`),
+        fetch(`/api/payment-methods?userId=${session.user.id}`),
       ]);
 
       if (invoicesResponse.ok) {
@@ -226,6 +234,12 @@ export default function InvoiceHistoryPage() {
         setTenants(tenantsData);
       } else {
         toast.error("Failed to load tenants");
+      }
+
+      if (paymentMethodsResponse.ok) {
+        setPaymentMethods(await paymentMethodsResponse.json());
+      } else {
+        console.error("Failed to load payment methods for invoice history");
       }
     } catch (error) {
       console.error("Error loading data:", error);
@@ -242,6 +256,54 @@ export default function InvoiceHistoryPage() {
   const getTenantName = (tenantId: string) => {
     const tenant = tenants.find((t) => t._id === tenantId);
     return tenant?.name || "Unknown Tenant";
+  };
+
+  const openInvoiceDetails = (invoice: Invoice) => {
+    setSelectedInvoice(invoice);
+    setSelectedPaymentMethodIds(new Set());
+  };
+
+  const addSelectedPaymentQrs = async () => {
+    if (!session?.user?.id || !selectedInvoice) return;
+    const paymentMethodIds = [...selectedPaymentMethodIds];
+    if (paymentMethodIds.length === 0) {
+      toast.error("Select at least one payment QR to add");
+      return;
+    }
+
+    setSavingPaymentQrs(true);
+    try {
+      const response = await fetch("/api/invoices", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: session.user.id,
+          invoiceId: selectedInvoice._id,
+          paymentMethodIds,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || "Could not add payment QR codes");
+      }
+
+      const updatedInvoice = result as Invoice;
+      setSelectedInvoice(updatedInvoice);
+      setInvoices((current) =>
+        current.map((invoice) =>
+          invoice._id === updatedInvoice._id ? updatedInvoice : invoice,
+        ),
+      );
+      setSelectedPaymentMethodIds(new Set());
+      toast.success("Payment QR added to invoice history");
+    } catch (error) {
+      console.error("Error adding payment QR to historical invoice:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Could not update invoice",
+      );
+    } finally {
+      setSavingPaymentQrs(false);
+    }
   };
 
   const downloadFile = (content: string, filename: string, type: string) => {
@@ -796,7 +858,7 @@ export default function InvoiceHistoryPage() {
                   <Card
                     key={invoice._id}
                     className="cursor-pointer"
-                    onClick={() => setSelectedInvoice(invoice)}
+                    onClick={() => openInvoiceDetails(invoice)}
                   >
                     <CardContent className="p-4 sm:p-6">
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -1192,14 +1254,125 @@ export default function InvoiceHistoryPage() {
       {/* Invoice Detail Dialog */}
       <Dialog
         open={!!selectedInvoice}
-        onOpenChange={(open) => !open && setSelectedInvoice(null)}
-      >
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedInvoice(null);
+              setSelectedPaymentMethodIds(new Set());
+            }
+          }}
+        >
         <DialogContent className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] flex-col overflow-hidden p-0 sm:max-w-5xl">
           <DialogHeader className="shrink-0 p-6 pb-0">
             <DialogTitle>Invoice Details</DialogTitle>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 pt-4 sm:p-6">
-            {selectedInvoice && <InvoiceDisplay invoice={selectedInvoice} />}
+            {selectedInvoice && (
+              <>
+                <section className="mb-5 rounded-lg border bg-muted/20 p-4">
+                  <div className="mb-3 flex items-start gap-3">
+                    <QrCodeIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+                    <div>
+                      <h3 className="text-sm font-semibold">
+                        Add payment QR to this invoice
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        This updates the saved invoice in history without
+                        changing its rent or readings.
+                      </p>
+                    </div>
+                  </div>
+                  {paymentMethods.length > 0 ? (
+                    <>
+                      <div className="mb-3 grid gap-2 sm:grid-cols-2">
+                        {paymentMethods.map((method) => {
+                          const alreadyAdded =
+                            selectedInvoice.paymentQrs?.some(
+                              (qr) => qr.storageId === method.storageId,
+                            ) ?? false;
+                          return (
+                            <label
+                              key={method._id}
+                              className={`flex items-center gap-2 rounded-md border bg-background p-2 text-sm ${
+                                alreadyAdded
+                                  ? "cursor-not-allowed opacity-60"
+                                  : "cursor-pointer"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={
+                                  alreadyAdded ||
+                                  selectedPaymentMethodIds.has(method._id)
+                                }
+                                disabled={alreadyAdded || savingPaymentQrs}
+                                onChange={(event) =>
+                                  setSelectedPaymentMethodIds((current) => {
+                                    const next = new Set(current);
+                                    if (event.target.checked) {
+                                      next.add(method._id);
+                                    } else {
+                                      next.delete(method._id);
+                                    }
+                                    return next;
+                                  })
+                                }
+                              />
+                              {method.imageUrl && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={method.imageUrl}
+                                  alt=""
+                                  className="size-9 shrink-0 bg-white object-contain"
+                                  style={{
+                                    borderColor: method.borderColor ?? "#7C3AED",
+                                    borderWidth: `${method.borderWidth ?? 2}px`,
+                                    borderStyle: method.borderStyle ?? "solid",
+                                  }}
+                                />
+                              )}
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate font-medium">
+                                  {method.name}
+                                </span>
+                                <span className="block text-xs text-muted-foreground">
+                                  {alreadyAdded
+                                    ? "Already on this invoice"
+                                    : method.provider}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={addSelectedPaymentQrs}
+                        disabled={
+                          savingPaymentQrs ||
+                          selectedPaymentMethodIds.size === 0 ||
+                          paymentMethods.every((method) =>
+                            selectedInvoice.paymentQrs?.some(
+                              (qr) => qr.storageId === method.storageId,
+                            ),
+                          )
+                        }
+                      >
+                        {savingPaymentQrs
+                          ? "Adding payment QR…"
+                          : "Add selected QR codes"}
+                      </Button>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No saved payment QR codes are available. Add one in
+                      Settings first.
+                    </p>
+                  )}
+                </section>
+                <InvoiceDisplay invoice={selectedInvoice} />
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>
