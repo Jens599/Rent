@@ -680,15 +680,24 @@ export default function InvoicePage() {
                             }
                           />
                           {method.imageUrl && (
-                            <Image
-                              src={method.imageUrl}
-                              alt=""
-                              width={48}
-                              height={48}
-                              unoptimized
-                              crossOrigin="anonymous"
-                              className="size-12 rounded border bg-white object-contain"
-                            />
+                            <span
+                              className="size-12 shrink-0 bg-white p-0.5"
+                              style={{
+                                borderColor: method.borderColor ?? "#7C3AED",
+                                borderWidth: `${method.borderWidth ?? 2}px`,
+                                borderStyle: method.borderStyle ?? "solid",
+                              }}
+                            >
+                              <Image
+                                src={method.imageUrl}
+                                alt=""
+                                width={48}
+                                height={48}
+                                unoptimized
+                                crossOrigin="anonymous"
+                                className="size-full object-contain"
+                              />
+                            </span>
                           )}
                           <span className="min-w-0">
                             <span className="block truncate text-sm font-medium">

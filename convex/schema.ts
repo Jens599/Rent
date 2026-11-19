@@ -55,6 +55,11 @@ export default defineSchema({
           name: v.string(),
           provider: v.string(),
           storageId: v.id("_storage"),
+          borderColor: v.optional(v.string()),
+          borderWidth: v.optional(v.number()),
+          borderStyle: v.optional(
+            v.union(v.literal("solid"), v.literal("dashed"), v.literal("dotted")),
+          ),
         }),
       ),
     ),
@@ -118,5 +123,10 @@ export default defineSchema({
     provider: v.string(),
     storageId: v.id("_storage"),
     createdAt: v.string(),
+    borderColor: v.optional(v.string()),
+    borderWidth: v.optional(v.number()),
+    borderStyle: v.optional(
+      v.union(v.literal("solid"), v.literal("dashed"), v.literal("dotted")),
+    ),
   }).index("by_userId", ["userId"]),
 });

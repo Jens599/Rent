@@ -29,12 +29,14 @@ import {
   UsersIcon,
   FileTextIcon,
   UserIcon,
+  QrCodeIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import { Input } from "@/components/ui/input";
 import type { PaymentMethod } from "@/lib/types";
+import { PaymentQrCropDialog } from "@/components/payment-qr-crop-dialog";
 
 export default function SettingsPage() {
   const { data: session, status } = useSession();
@@ -46,6 +48,13 @@ export default function SettingsPage() {
   const [paymentName, setPaymentName] = React.useState("");
   const [paymentProvider, setPaymentProvider] = React.useState("Bank transfer");
   const [paymentImage, setPaymentImage] = React.useState<File | null>(null);
+  const [croppedPaymentImage, setCroppedPaymentImage] =
+    React.useState<File | null>(null);
+  const [paymentCropOpen, setPaymentCropOpen] = React.useState(false);
+  const [paymentBorderColor, setPaymentBorderColor] = React.useState("#7C3AED");
+  const [paymentBorderWidth, setPaymentBorderWidth] = React.useState("2");
+  const [paymentBorderStyle, setPaymentBorderStyle] =
+    React.useState<"solid" | "dashed" | "dotted">("solid");
   const [paymentSaving, setPaymentSaving] = React.useState(false);
 
   React.useEffect(() => {
@@ -82,8 +91,8 @@ export default function SettingsPage() {
 
   const savePaymentMethod = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!session?.user?.id || !paymentImage) {
-      toast.error("Choose a QR image to upload");
+    if (!session?.user?.id || !croppedPaymentImage) {
+      toast.error("Choose an image and apply a crop first");
       return;
     }
     setPaymentSaving(true);
@@ -92,13 +101,33 @@ export default function SettingsPage() {
       formData.set("userId", session.user.id);
       formData.set("name", paymentName.trim() || paymentProvider);
       formData.set("provider", paymentProvider);
-      formData.set("image", paymentImage);
+      formData.set("image", croppedPaymentImage);
+      formData.set("borderColor", paymentBorderColor);
+      formData.set("borderWidth", paymentBorderWidth);
+      formData.set("borderStyle", paymentBorderStyle);
       const response = await fetch("/api/payment-methods", {
         method: "POST",
         body: formData,
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || "Upload failed");
+      if (!response.ok) {
+        const diagnostic = {
+          status: response.status,
+          code: result.code,
+          stage: result.stage,
+          requestId: result.requestId ?? response.headers.get("X-Request-ID"),
+        };
+        console.error("[payment-qr-upload] request failed", diagnostic);
+        toast.error(result.error || "Upload failed", {
+          description: [
+            result.stage && `Stage: ${result.stage}`,
+            diagnostic.requestId && `Request ID: ${diagnostic.requestId}`,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        });
+        return;
+      }
 
       const methodsResponse = await fetch(
         `/api/payment-methods?userId=${session.user.id}`,
@@ -107,12 +136,17 @@ export default function SettingsPage() {
       setPaymentMethods(await methodsResponse.json());
       setPaymentName("");
       setPaymentImage(null);
+      setCroppedPaymentImage(null);
+      setPaymentBorderColor("#7C3AED");
+      setPaymentBorderWidth("2");
+      setPaymentBorderStyle("solid");
       const fileInput = document.getElementById(
         "payment-qr-image",
       ) as HTMLInputElement | null;
       if (fileInput) fileInput.value = "";
       toast.success("Payment QR saved");
     } catch (error) {
+      console.error("[payment-qr-upload] network or response error", error);
       toast.error(
         error instanceof Error ? error.message : "Failed to save payment QR",
       );
@@ -318,16 +352,111 @@ export default function SettingsPage() {
                   id="payment-qr-image"
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
-                  onChange={(event) =>
-                    setPaymentImage(event.target.files?.[0] ?? null)
-                  }
-                  required
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    if (!file) return;
+                    if (
+                      file.size > 500_000 ||
+                      !["image/png", "image/jpeg", "image/webp"].includes(
+                        file.type,
+                      )
+                    ) {
+                      toast.error("Choose a PNG, JPEG, or WebP image under 500 KB");
+                      event.target.value = "";
+                      setPaymentImage(null);
+                      setCroppedPaymentImage(null);
+                      return;
+                    }
+                    setPaymentImage(file);
+                    setCroppedPaymentImage(null);
+                    setPaymentCropOpen(true);
+                  }}
                 />
+                <span className="block text-xs font-normal text-muted-foreground">
+                  {croppedPaymentImage
+                    ? `Cropped and ready: ${croppedPaymentImage.name}`
+                    : paymentImage
+                      ? "Crop this image before saving."
+                      : "Select an image, then auto-detect or frame the QR manually."}
+                </span>
               </label>
             </div>
-            <Button type="submit" disabled={paymentSaving || !paymentImage}>
-              {paymentSaving ? "Saving QR…" : "Add payment QR"}
-            </Button>
+            <div className="grid gap-4 rounded-md border bg-muted/20 p-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="space-y-2 text-sm font-medium">
+                  Border color
+                  <Input
+                    type="color"
+                    value={paymentBorderColor}
+                    onChange={(event) =>
+                      setPaymentBorderColor(event.target.value.toUpperCase())
+                    }
+                    className="h-10 w-full cursor-pointer p-1"
+                  />
+                </label>
+                <label className="space-y-2 text-sm font-medium">
+                  Thickness
+                  <select
+                    value={paymentBorderWidth}
+                    onChange={(event) => setPaymentBorderWidth(event.target.value)}
+                    className="flex h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((width) => (
+                      <option key={width} value={width}>
+                        {width} px
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-2 text-sm font-medium">
+                  Border style
+                  <select
+                    value={paymentBorderStyle}
+                    onChange={(event) =>
+                      setPaymentBorderStyle(
+                        event.target.value as "solid" | "dashed" | "dotted",
+                      )
+                    }
+                    className="flex h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="solid">Solid</option>
+                    <option value="dashed">Dashed</option>
+                    <option value="dotted">Dotted</option>
+                  </select>
+                </label>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                <div
+                  className="grid size-12 shrink-0 place-items-center bg-white"
+                  style={{
+                    borderColor: paymentBorderColor,
+                    borderWidth: `${paymentBorderWidth}px`,
+                    borderStyle: paymentBorderStyle,
+                  }}
+                  aria-label="Payment QR border preview"
+                >
+                  <QrCodeIcon className="size-7 text-slate-700" />
+                </div>
+                Preview for this payment method
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {paymentImage && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPaymentCropOpen(true)}
+                >
+                  Adjust crop
+                </Button>
+              )}
+              <Button
+                type="submit"
+                disabled={paymentSaving || !croppedPaymentImage}
+              >
+                {paymentSaving ? "Saving QR…" : "Add payment QR"}
+              </Button>
+            </div>
           </form>
 
           {paymentMethods.length > 0 && (
@@ -338,14 +467,23 @@ export default function SettingsPage() {
                   className="flex items-center gap-3 rounded-lg border p-3"
                 >
                   {method.imageUrl && (
-                    <Image
-                      src={method.imageUrl}
-                      alt={`${method.provider} QR code`}
-                      width={64}
-                      height={64}
-                      unoptimized
-                      className="size-16 rounded border object-contain"
-                    />
+                    <div
+                      className="size-16 shrink-0 bg-white p-0.5"
+                      style={{
+                        borderColor: method.borderColor ?? "#7C3AED",
+                        borderWidth: `${method.borderWidth ?? 2}px`,
+                        borderStyle: method.borderStyle ?? "solid",
+                      }}
+                    >
+                      <Image
+                        src={method.imageUrl}
+                        alt={`${method.provider} QR code`}
+                        width={64}
+                        height={64}
+                        unoptimized
+                        className="size-full object-contain"
+                      />
+                    </div>
                   )}
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{method.name}</p>
@@ -366,6 +504,12 @@ export default function SettingsPage() {
               ))}
             </div>
           )}
+          <PaymentQrCropDialog
+            file={paymentImage}
+            open={paymentCropOpen}
+            onOpenChange={setPaymentCropOpen}
+            onApply={setCroppedPaymentImage}
+          />
         </CardContent>
       </Card>
 

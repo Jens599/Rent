@@ -150,6 +150,11 @@ export async function POST(request: NextRequest) {
         name: method.name,
         provider: method.provider,
         storageId: method.storageId,
+        ...(method.borderColor && { borderColor: method.borderColor }),
+        ...(method.borderWidth !== undefined && {
+          borderWidth: method.borderWidth,
+        }),
+        ...(method.borderStyle && { borderStyle: method.borderStyle }),
       }));
     } else {
       invoiceData.paymentQrs = [];

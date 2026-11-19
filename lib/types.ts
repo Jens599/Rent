@@ -31,6 +31,9 @@ export interface PaymentQrSnapshot {
   provider: string;
   storageId: Id<"_storage">;
   imageUrl?: string | null;
+  borderColor?: string;
+  borderWidth?: number;
+  borderStyle?: "solid" | "dashed" | "dotted";
 }
 
 export interface PaymentMethod extends PaymentQrSnapshot {

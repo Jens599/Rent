@@ -69,9 +69,14 @@ function PaymentQrList({
         {paymentQrs.map((paymentQr, index) => (
           <div
             key={`${paymentQr.storageId}-${index}`}
-            className={`flex items-center gap-3 border border-current/15 bg-white p-3 text-slate-900 ${
+            className={`flex items-center gap-3 bg-white p-3 text-slate-900 ${
               compact ? "text-xs" : "text-sm"
             }`}
+            style={{
+              borderColor: paymentQr.borderColor ?? "rgb(15 23 42 / 0.15)",
+              borderWidth: `${paymentQr.borderWidth ?? 1}px`,
+              borderStyle: paymentQr.borderStyle ?? "solid",
+            }}
           >
             {paymentQr.imageUrl ? (
               // QR images are served from Convex storage; anonymous CORS keeps JPEG export canvas-safe.

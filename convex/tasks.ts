@@ -111,6 +111,11 @@ export const createInvoice = mutation({
           name: v.string(),
           provider: v.string(),
           storageId: v.id("_storage"),
+          borderColor: v.optional(v.string()),
+          borderWidth: v.optional(v.number()),
+          borderStyle: v.optional(
+            v.union(v.literal("solid"), v.literal("dashed"), v.literal("dotted")),
+          ),
         }),
       ),
     ),
@@ -633,6 +638,11 @@ export const createPaymentMethod = mutation({
     name: v.string(),
     provider: v.string(),
     storageId: v.id("_storage"),
+    borderColor: v.optional(v.string()),
+    borderWidth: v.optional(v.number()),
+    borderStyle: v.optional(
+      v.union(v.literal("solid"), v.literal("dashed"), v.literal("dotted")),
+    ),
   },
   handler: async (ctx, args) => {
     const methodId = await ctx.db.insert("paymentMethods", {
